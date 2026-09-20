@@ -31,7 +31,7 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   if (req.mode === 'navigate') {
     event.respondWith(fetch(req).catch(async () => (await caches.open(CACHE)).match(url.pathname === '/' ? '/admin' : url.pathname).then(r => r || new Response('온라인에서 예배 자료 다운로드를 먼저 실행해 주세요.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }))));
-  } else if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/vendor/') || ['/icon.svg', '/manifest.webmanifest'].includes(url.pathname)) {
+  } else if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/vendor/') || url.pathname.startsWith('/icons/') || ['/favicon.ico', '/manifest.webmanifest'].includes(url.pathname)) {
     event.respondWith((async () => { const cache = await caches.open(CACHE); const existing = await cache.match(req) || await caches.match(req); if (existing) return existing; const result = await fetch(req); if (result.ok) await cache.put(req, result.clone()); return result; })());
   }
 });

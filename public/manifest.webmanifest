@@ -1,1 +1,1 @@
-{"name":"아름다운 교회 예배 운영","short_name":"예배 운영","start_url":"/admin","display":"standalone","background_color":"#101311","theme_color":"#101311","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]}
+{"name":"아름다운 교회 예배 운영","short_name":"예배 운영","start_url":"/admin","display":"standalone","background_color":"#101311","theme_color":"#101311","icons":[{"src":"/icons/church-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/icons/church-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}
