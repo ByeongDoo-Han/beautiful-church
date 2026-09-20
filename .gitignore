@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env*
+!.env.example
+public/vendor/
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+.vercel/
+public/precache.json
+public/sw.js
