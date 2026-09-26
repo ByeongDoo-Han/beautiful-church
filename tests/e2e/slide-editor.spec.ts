@@ -122,6 +122,7 @@ test('admin save persists edit metadata without uploading the original file agai
   await connect(page); await page.goto('/admin');
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
   await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '둘째 순서 PPT 섹션 변경', exact: true }).click();
   await page.getByRole('group', { name: '둘째 순서 PPT 섹션', exact: true }).getByRole('button', { name: /^1\./ }).click();
   await page.getByRole('button', { name: '편집 완료', exact: true }).click();
   await page.getByRole('button', { name: '슬라이드 편집', exact: true }).click();

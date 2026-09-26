@@ -17,6 +17,17 @@ for (const viewport of [{ width: 1512, height: 982 }, { width: 390, height: 844 
     for (let i = 0; i < 3; i++) await dialog.getByRole('button', { name: '빈 순서 추가', exact: true }).click();
     await expect(dialog.locator('.editor-section')).toHaveCount(3);
     await expect(dialog.locator('.editor-item')).toHaveCount(7);
+    await expect(dialog.locator('.card-section-picker button')).toHaveCount(0);
+    const prayer = dialog.locator('.editor-item').filter({ has: page.getByRole('textbox', { name: '항목 4 제목', exact: true }) });
+    await prayer.getByRole('button', { name: '함께 드리는 기도 PPT 섹션 변경', exact: true }).click();
+    await expect(dialog.locator('.card-section-picker button')).toHaveCount(3);
+    await prayer.getByRole('group', { name: '함께 드리는 기도 PPT 섹션', exact: true }).getByRole('button', { name: /^1\./ }).click();
+    await expect(dialog.locator('.card-section-summary').filter({ hasText: '1. 예배 안내.pptx' })).toHaveCount(3);
+    await dialog.getByRole('button', { name: '예배로의 초대 PPT 섹션 변경', exact: true }).click();
+    await expect(dialog.locator('.card-section-picker button')).toHaveCount(3);
+    await expect(dialog.getByRole('button', { name: '함께 드리는 기도 PPT 섹션 변경', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    await dialog.getByRole('button', { name: '예배로의 초대 PPT 섹션 변경', exact: true }).click();
+    await expect(dialog.locator('.card-section-picker button')).toHaveCount(0);
     await page.getByLabel('예배 파일 불러오기').setInputFiles(path.resolve('public/demo/tone.mp3'));
     await expect(dialog.getByRole('status')).toContainText('1개 파일');
     await expect(dialog.locator('.editor-section')).toHaveCount(3);
