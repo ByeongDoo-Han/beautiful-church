@@ -4,6 +4,28 @@ import { appendCard, currentSection, moveCard, moveSection, patchSection, remove
 import { createPresentationEdit } from '../../src/lib/slide-edit';
 
 describe('PPT sections', () => {
+  it('adds blank and audio cards without multiplying sections or losing presentation edits', () => {
+    const edit = createPresentationEdit('demo-pptx', 3);
+    const base: Manifest = { ...demoManifest, sections: [{ id: 'service', presentationId: 'demo-pptx', presentationEdit: edit, itemIds: demoManifest.items.map(i => i.id) }] };
+    let value = appendCard(base, { id: 'blank', title: '빈 순서' });
+    value = appendCard(value, { id: 'audio', title: '음원', audioId: 'demo-mp3' });
+    expect(value.sections).toHaveLength(1);
+    expect(value.sections?.[0]).toEqual({ ...base.sections![0], itemIds: ['welcome', 'praise', 'prayer', 'blank', 'audio'] });
+    expect(currentSection(value, 'audio')?.owner.presentationEdit).toEqual(edit);
+    expect(manifestSchema.safeParse(value).success).toBe(true);
+    value = appendCard(value, { id: 'new-ppt', title: '새 PPT', presentationId: 'demo-pptx' });
+    expect(value.sections).toHaveLength(2);
+    expect(value.sections?.[1].itemIds).toEqual(['new-ppt']);
+    expect(value.sections?.[0].presentationEdit).toEqual(edit);
+  });
+  it('creates only the first section when adding cards to an empty service', () => {
+    let value: Manifest = { ...demoManifest, items: [], sections: [] };
+    value = appendCard(value, { id: 'one', title: '첫 순서', audioId: 'demo-mp3' });
+    value = appendCard(value, { id: 'two', title: '둘째 순서' });
+    expect(value.sections).toHaveLength(1);
+    expect(value.sections?.[0].itemIds).toEqual(['one', 'two']);
+    expect(manifestSchema.safeParse(value).success).toBe(true);
+  });
   it('migrates legacy ranges without losing hidden card settings, audio, or text edits', () => {
     const edit = createPresentationEdit('demo-pptx', 3); edit.slides[0].texts['text-0'] = '수정 문구';
     const legacy: Manifest = { ...demoManifest, items: demoManifest.items.map((i, n) => n === 0 ? { ...i, slideHoldCount: 3, presentationEdit: edit } : i) };

@@ -10,8 +10,9 @@ export function LibraryEditor({ manifest, onChange, onClose }: { manifest: Manif
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
   const value = withSections(manifest);
   const patch = (id: string, patch: Partial<Item>) => onChange({ ...value, items: value.items.map(i => i.id === id ? { ...i, ...patch } : i) });
-  return <div className="modal-backdrop"><section className="library-dialog" role="dialog" aria-modal="true" aria-label="예배 자료 편집">
+  return <div className="modal-backdrop"><section className="library-dialog library-editor-dialog" role="dialog" aria-modal="true" aria-label="예배 자료 편집">
     <header><div><span className="eyebrow">SERVICE LIBRARY</span><h2>예배 자료 편집</h2></div><button aria-label="편집 닫기" onClick={onClose}><X size={20} /></button></header>
+    <div className="library-editor-body">
     <label className="field-label">예배 이름<input value={value.title} maxLength={100} onChange={e => onChange({ ...value, title: e.target.value || '예배' })} /></label>
     <label className={`upload-area ${busy ? 'disabled' : ''}`}><Upload size={24} /><strong>{busy ? '파일을 확인하고 있습니다…' : 'PPTX · PDF · MP3 불러오기'}</strong><span>PPTX/PDF 20MB · MP3 15MB / PPT·PDF를 불러오면 새 섹션이 만들어집니다</span><input aria-label="예배 파일 불러오기" type="file" accept=".pptx,.pdf,.mp3" multiple disabled={busy} onChange={async e => {
       const files = [...(e.target.files ?? [])]; setBusy(true); setMessage('');
@@ -46,5 +47,6 @@ export function LibraryEditor({ manifest, onChange, onClose }: { manifest: Manif
     <button disabled={value.items.length >= 100 || busy} onClick={() => onChange(appendCard(value, { id: crypto.randomUUID(), title: '새 예배 순서' }, value.sections.at(-1)?.id))}><Plus size={16} />빈 순서 추가</button>
     <p className="muted">새 순서는 마지막 PPT 섹션에 추가됩니다. PPT 섹션 파일을 교체하면 해당 섹션의 웹 문구 편집은 초기화됩니다.</p>
     <footer><span>변경 사항은 이 PC에 자동 저장됩니다.</span><button className="primary" onClick={onClose}>편집 완료</button></footer>
+    </div>
   </section></div>;
 }

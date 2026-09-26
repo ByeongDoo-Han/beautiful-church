@@ -50,7 +50,10 @@ export function appendCard(manifest: Manifest, item: Item, sectionId?: string): 
   if (value.items.length >= 100) throw new Error('예배 순서는 최대 100개입니다.');
   if (value.items.some(i => i.id === item.id)) return value;
   let sections = value.sections;
-  if (sectionId && sections.some(s => s.id === sectionId)) sections = sections.map(s => s.id === sectionId ? { ...s, itemIds: [...s.itemIds, item.id] } : s);
+  // Blank and audio-only cards share the last section; importing a presentation
+  // starts its own section so existing files and slide edits remain intact.
+  const targetId = sectionId ?? (!item.presentationId && !item.fallbackPdfId && !item.presentationEdit ? sections.at(-1)?.id : undefined);
+  if (targetId && sections.some(s => s.id === targetId)) sections = sections.map(s => s.id === targetId ? { ...s, itemIds: [...s.itemIds, item.id] } : s);
   else {
     if (sections.length >= 100) throw new Error('PPT 섹션은 최대 100개입니다.');
     sections = [...sections, { id: crypto.randomUUID(), presentationId: item.presentationId, fallbackPdfId: item.fallbackPdfId, presentationEdit: item.presentationEdit, itemIds: [item.id] }];
