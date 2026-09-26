@@ -29,7 +29,7 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
   return <>
     {canEdit && <button className="queue-edit-toggle" disabled={disabled} aria-pressed={editing} onClick={() => { setEditing(v => !v); setMenu(null); setRenaming(null); }}>{editing ? <X size={14} /> : <Edit3 size={14} />}{editing ? '편집 모드 종료' : '편집 모드'}</button>}
     {canEdit && editing && <p className="queue-edit-help">연필 버튼으로 순서 이름을 수정할 수 있습니다. 카드나 빈 PPT 섹션을 삭제해도 원본 파일은 유지됩니다.</p>}
-    <nav className="service-queue grouped-queue" aria-label="곡 선택">
+    <nav className="service-queue grouped-queue" aria-label="곡 선택" onDragLeave={e => { if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setOver(''); }}>
       {value.sections.map((section, sectionIndex) => <section key={section.id} data-section-id={section.id} className={`ppt-section ${over === section.id ? 'drop-section' : ''}`} aria-label={`PPT 섹션 ${sectionIndex + 1}: ${sectionName(value, section)}`}
         onDragOver={e => { if (drag.current && !locked) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(section.id); } }} onDrop={e => drop(e, section.id)}>
         <header className="ppt-section-heading"><Presentation size={16} /><div><strong title={sectionName(value, section)}>{sectionName(value, section)}</strong><small>{section.itemIds.length}개 예배 순서</small></div>
@@ -64,7 +64,7 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
             </div></div>}
           </div>;
         })}</div>
-        {canEdit && <div className="section-drop-end">{section.itemIds.length ? '여기로 끌어서 마지막에 배치' : '예배 순서 카드를 여기로 끌어오세요'}</div>}
+        {canEdit && <div className={`section-drop-end ${section.itemIds.length ? '' : 'empty'}`}>{!section.itemIds.length && '예배 순서 카드를 여기로 끌어오세요'}</div>}
       </section>)}
     </nav>
     {canEdit && <button className="add-ppt-section" disabled={disabled || value.sections.length >= 100} onClick={() => setAdding(v => !v)}><Plus size={14} />PPT 섹션 추가</button>}
