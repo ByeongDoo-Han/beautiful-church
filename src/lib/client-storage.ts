@@ -14,6 +14,15 @@ export async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T
 }
 export async function localManifest(mode: string) { const db = await database(); try { return await db.get('metadata', mode); } finally { db.close(); } }
 export async function saveLocalManifest(mode: string, value: ManifestEnvelope) { const db = await database(); try { await db.put('metadata', value, mode); } finally { db.close(); } }
+export async function deleteLocalManifest(mode: string) { const db = await database(); try { await db.delete('metadata', mode); } finally { db.close(); } }
+export async function removeLegacyPageCaches() {
+  if (!('caches' in window)) return;
+  const names = (await caches.keys()).filter(name => name.startsWith('worship-shell-'));
+  await Promise.all(names.map(async name => {
+    const cache = await caches.open(name);
+    await Promise.all(['/', '/admin', '/worship', '/output'].map(url => cache.delete(url, { ignoreSearch: true })));
+  }));
+}
 export async function hasFile(id: string) { const db = await database(); try { return (await db.getKey('files', id)) !== undefined; } finally { db.close(); } }
 export async function storeFile(id: string, blob: Blob) { const db = await database(); try { await db.put('files', blob, id); window.dispatchEvent(new Event('worship-file-cached')); } finally { db.close(); } }
 export async function clearLocalFiles() { const db = await database(); try { const tx = db.transaction(['files', 'metadata'], 'readwrite'); await tx.objectStore('files').clear(); await tx.objectStore('metadata').clear(); await tx.done; } finally { db.close(); } }

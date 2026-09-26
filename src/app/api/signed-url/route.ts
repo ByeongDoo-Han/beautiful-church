@@ -1,5 +1,5 @@
 import { issueSignedToken, presignUrl } from '@vercel/blob';
-import { apiError, HttpError, requireAdmin } from '@/lib/auth';
+import { apiError, requireAdmin, HttpError } from '@/lib/auth';
 import { readManifest } from '@/lib/blob-store';
 export const runtime = 'nodejs';
 export async function GET(req: Request) {
@@ -12,6 +12,6 @@ export async function GET(req: Request) {
     const validUntil = Date.now() + 5 * 60 * 1000;
     const token = await issueSignedToken({ pathname: asset.pathname, operations: ['get'], validUntil });
     const result = await presignUrl(token, { pathname: asset.pathname, operation: 'get', access: 'private', validUntil });
-    return Response.json({ url: result.presignedUrl, expiresAt: validUntil });
+    return Response.json({ url: result.presignedUrl, expiresAt: validUntil }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) { return apiError(e); }
 }

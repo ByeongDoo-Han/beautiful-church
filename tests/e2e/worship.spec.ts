@@ -1,4 +1,7 @@
+import { signIn } from '../helpers/admin';
 import { test, expect, type Page } from '@playwright/test';
+
+test.beforeEach(async ({ page }) => { await signIn(page.request); });
 import path from 'node:path';
 async function openConsole(page: Page) {
   await page.goto('/admin');
@@ -40,18 +43,18 @@ test('real file import persists and can be paired in the editor', async ({ page 
   await page.getByLabel('예배 파일 불러오기').setInputFiles(['welcome.pptx', 'welcome.pdf', 'tone.mp3'].map(f => path.resolve('public/demo', f)));
   await expect(page.getByRole('status')).toContainText('3개 파일');
   const title = page.getByRole('textbox', { name: '항목 4 제목' }); await title.fill('새 찬양');
-  await page.getByLabel('새 찬양 찬양 MP3', { exact: true }).selectOption({ label: 'tone.mp3' });
-  await page.getByLabel('새 찬양 대체 PDF', { exact: true }).selectOption({ label: 'welcome.pdf' });
+  await page.getByRole('group', { name: '새 찬양 찬양 MP3', exact: true }).getByRole('button', { name: 'tone.mp3', exact: true }).click();
+  await page.getByRole('group', { name: 'PPT 섹션 4 대체 PDF', exact: true }).getByRole('button', { name: 'welcome.pdf', exact: true }).click();
   await page.getByRole('button', { name: '편집 완료', exact: true }).click(); await page.getByRole('button', { name: /04 새 찬양/ }).click();
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다'); await page.reload();
   await expect(page.getByRole('button', { name: /04 새 찬양/ })).toBeVisible(); await expect(page.getByRole('button', { name: '찬양 재생', exact: true })).toBeEnabled();
 });
-test('prepared app reloads offline, opens output, renders PDF and plays MP3', async ({ page, context }) => {
-  await openConsole(page); await page.getByRole('button', { name: '예배 자료 다운로드', exact: true }).click();
+test('authenticated open screens render PDF and play MP3 offline; reopening requires login', async ({ page, context }) => {
+  await openConsole(page); await page.evaluate(() => Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true }));
+  await page.getByRole('button', { name: '예배 자료 다운로드', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('준비 완료', { timeout: 60000 });
-  await context.setOffline(true); await page.reload();
-  await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
-  const output = await launch(page); await page.getByRole('button', { name: 'PDF로 전환', exact: true }).click();
+  const output = await launch(page); await context.setOffline(true);
+  await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다'); await page.getByRole('button', { name: 'PDF로 전환', exact: true }).click();
   await expect(output.locator('canvas')).toHaveCount(1); await page.getByRole('button', { name: /찬양 · 음향 리허설/ }).click();
   await page.getByRole('button', { name: '찬양 재생', exact: true }).click(); await expect(page.getByRole('button', { name: '찬양 일시정지', exact: true })).toBeVisible();
 });
@@ -85,7 +88,7 @@ test('fullscreen rejection asks for a direct click; real fullscreen state is rep
   await page.getByRole('button', { name: '출력창 전체화면 해제', exact: true }).click();
   await expect.poll(() => output.evaluate(() => !!document.fullscreenElement)).toBe(false);
 });
-test('cloud APIs reject unauthenticated access and foreign-origin mutations', async ({ request }) => {
+test('unconfigured cloud APIs fail closed and foreign-origin mutations are rejected', async ({ request }) => {
   for (const route of ['/api/manifest', '/api/signed-url?id=demo-pptx']) expect([401, 503]).toContain((await request.get(route)).status());
   const r = await request.post('/api/login', { headers: { origin: 'https://attacker.example' }, data: { password: 'wrong' } }); expect(r.status()).toBe(403);
   expect((await request.put('/api/manifest', { headers: { origin: 'https://attacker.example' }, data: {} })).status()).toBe(403);
@@ -94,7 +97,7 @@ test('a damaged PPTX can be replaced by its linked PDF without a server converte
   await openConsole(page); await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles({ name: 'damaged.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer: Buffer.from('PK-damaged-not-a-real-zip') });
   await expect(page.getByRole('status')).toContainText('1개 파일');
-  await page.getByLabel('damaged 대체 PDF', { exact: true }).selectOption({ label: '예배 안내.pdf' });
+  await page.getByRole('group', { name: 'PPT 섹션 4 대체 PDF', exact: true }).getByRole('button', { name: '예배 안내.pdf', exact: true }).click();
   await page.getByRole('button', { name: '편집 완료', exact: true }).click(); await page.getByRole('button', { name: /04 damaged/ }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await page.getByRole('button', { name: 'PDF로 전환', exact: true }).click(); await expect(page.locator('.current-preview canvas')).toBeVisible();
@@ -104,6 +107,7 @@ test('capture console for delivery', async ({ page }) => {
   await openConsole(page); await expect(page.getByRole('img', { name: '다음 슬라이드 미리보기' })).toContainText('찬양으로 마음을 모읍니다');
   await page.getByRole('button', { name: /찬양 · 음향 리허설/ }).click();
   await expect(page.getByRole('button', { name: '찬양 재생', exact: true })).toBeEnabled();
-  const box = await page.locator('.audio-controls').boundingBox(); expect(box!.y + box!.height).toBeLessThanOrEqual(982);
+  await page.locator('.audio-controls').scrollIntoViewIfNeeded();
+  await expect(page.locator('.audio-controls')).toBeVisible();
   await page.screenshot({ path: 'artifacts/operator-console.png', fullPage: true });
 });

@@ -2,7 +2,7 @@ import type { PresentationData } from '@aiden0z/pptx-renderer';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { fileFor } from './client-storage';
 import type { Asset } from './model';
-export type Deck = { kind: 'pptx'; count: number; presentation: PresentationData } | { kind: 'pdf'; count: number; document: PDFDocumentProxy };
+export type Deck = { kind: 'pptx'; count: number; presentation: PresentationData; slideXml: string[] } | { kind: 'pdf'; count: number; document: PDFDocumentProxy };
 type Entry = { users: number; promise: Promise<Deck>; timer?: ReturnType<typeof setTimeout> };
 const decks = new Map<string, Entry>();
 export async function rendererModules() { return Promise.all([import('@aiden0z/pptx-renderer'), import('pdfjs-dist')]); }
@@ -13,7 +13,9 @@ async function load(asset: Asset): Promise<Deck> {
     const files = await pptx.parseZipLazyMedia(buffer, pptx.RECOMMENDED_ZIP_LIMITS);
     const presentation = pptx.buildPresentation(files, { lazySlides: true });
     if (!presentation.slides.length || presentation.slides.length > 1000) throw new Error('슬라이드는 1~1000장까지 지원합니다.');
-    return { kind: 'pptx', count: presentation.slides.length, presentation };
+    // The renderer consumes sourceXml when materializing a slide. Retain the original
+    // separately so edits and copies can always be rendered without mutating the cache.
+    return { kind: 'pptx', count: presentation.slides.length, presentation, slideXml: presentation.slides.map(s => s.sourceXml ?? '') };
   }
   if (asset.kind !== 'pdf') throw new Error('프레젠테이션 자료가 아닙니다.');
   const pdf = await import('pdfjs-dist');

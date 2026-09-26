@@ -1,0 +1,74 @@
+import { test, expect } from '@playwright/test';
+import { signIn } from '../helpers/admin';
+test.beforeEach(async ({ page }) => { await signIn(page.request); });
+
+test('resize panes with pointer and keyboard, retain ratio, and leave output slides unchanged', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/admin');
+  const current = page.getByRole('img', { name: '현재 슬라이드 미리보기' });
+  await expect(current).toContainText('우리 함께 예배합니다');
+  const popup = page.waitForEvent('popup');
+  await page.getByRole('button', { name: '출력창 열기', exact: true }).click();
+  const output = await popup;
+  const live = output.getByRole('img', { name: '출력 슬라이드' });
+  await expect(live).toContainText('우리 함께 예배합니다');
+  const divider = page.getByRole('separator', { name: '왼쪽·오른쪽 영역 비율 조절' });
+  const sidebar = page.locator('.sidebar');
+  await expect(sidebar).toHaveCSS('width', '264px');
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, 300);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 200, 300, { steps: 12 });
+  await page.mouse.up();
+  await expect(sidebar).toHaveCSS('width', '464px');
+  await divider.press('ArrowRight');
+  await expect(sidebar).toHaveCSS('width', '474px');
+  await expect(current).toContainText('우리 함께 예배합니다');
+  await expect(live).toContainText('우리 함께 예배합니다');
+  await page.reload();
+  await expect(sidebar).toHaveCSS('width', '474px');
+  await page.setViewportSize({ width: 1200, height: 982 });
+  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeCloseTo(474 / 1500 * 1188, 0);
+  await page.setViewportSize({ width: 1512, height: 982 });
+  await expect(sidebar).toHaveCSS('width', '474px');
+  await page.screenshot({ path: 'artifacts/resizable-workspace.png', fullPage: true });
+  await divider.dblclick();
+  await expect(sidebar).toHaveCSS('width', '264px');
+  await page.reload();
+  await expect(sidebar).toHaveCSS('width', '264px');
+  expect(errors).toEqual([]);
+});
+
+test('resize limits keep controls usable; mobile stacks panes and preserves desktop preference', async ({ page }) => {
+  await page.goto('/admin');
+  await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
+  const divider = page.getByRole('separator');
+  const sidebar = page.locator('.sidebar');
+  await divider.press('End');
+  await expect(sidebar).toHaveCSS('width', '900px');
+  await expect(page.locator('.next-preview')).toBeHidden();
+  await expect(page.getByRole('button', { name: '다음 슬라이드', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 800, height: 982 });
+  await expect(sidebar).toHaveCSS('width', '408px');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(divider).toBeHidden();
+  await expect(sidebar).toHaveCSS('width', '390px');
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1512, height: 982 });
+  await expect(sidebar).toHaveCSS('width', '900px');
+  await divider.press('Home');
+  await expect(sidebar).toHaveCSS('width', '220px');
+  await divider.press('ArrowLeft');
+  await expect(sidebar).toHaveCSS('width', '220px');
+  await divider.press('Enter');
+  await expect(sidebar).toHaveCSS('width', '264px');
+});
+
+test('invalid saved ratio falls back to the default', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('worship-sidebar-ratio', 'NaN'));
+  await page.goto('/admin');
+  await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '264px');
+});

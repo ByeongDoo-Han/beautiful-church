@@ -1,0 +1,48 @@
+import { operatorPassword } from './operator-credentials.mjs';
+// Exercise deployed controls in isolated browser drafts; block every server write.
+import { chromium, expect } from '@playwright/test';
+const base = process.env.CHOICE_TEST_BASE_URL || 'https://beautiful-church-tau.vercel.app';
+const browser = await chromium.launch({ channel: 'chrome', args: ['--mute-audio'] });
+try {
+  const context = await browser.newContext({ viewport: { width: 1512, height: 982 }, serviceWorkers: 'block' });
+  const page = await context.newPage(); const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const login = await page.request.post(`${base}/api/login`, { headers: { origin: base }, data: { username: 'admin', password: operatorPassword() } });
+  expect(login.status()).toBe(200);
+  const baseline = await (await page.request.get(`${base}/api/manifest`)).json();
+  await page.route('**/api/manifest', route => route.request().method() === 'GET' ? route.continue() : route.abort());
+  await page.route('**/api/upload', route => route.abort());
+  await page.goto(`${base}/admin`);
+  const inline = page.getByRole('region', { name: '선택한 예배 순서 음원 편집' });
+  const source = inline.getByRole('group');
+  await expect(page.locator('.slide-counter strong')).toHaveText(/\d+/, { timeout: 30000 });
+  const before = await page.locator('.slide-counter').textContent();
+  await source.getByRole('button', { name: 'MP3 음원 파일', exact: true }).click();
+  await source.getByRole('button', { name: 'MP3 음원 파일', exact: true }).press('ArrowRight');
+  await expect(source.getByRole('button', { name: '유튜브 링크 · 화면 1', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.slide-counter')).toHaveText(before);
+  await expect(page.locator('select')).toHaveCount(0);
+  await inline.screenshot({ path: 'artifacts/choice-buttons-inline-production.png' });
+  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '예배 자료 편집', exact: true });
+  await expect(dialog.locator('select')).toHaveCount(0);
+  const files = dialog.getByRole('group', { name: 'PPT 섹션 1 파일', exact: true });
+  const original = await files.getByRole('button', { pressed: true }).getAttribute('title');
+  await files.getByRole('button', { name: '자료 미지정', exact: true }).click();
+  await expect(files.getByRole('button', { name: '자료 미지정', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await files.getByRole('button', { name: original, exact: true }).click();
+  const audio = dialog.getByRole('group', { name: /찬양 MP3$/ }).first();
+  await audio.getByRole('button').last().click();
+  await expect(audio.getByRole('button').last()).toHaveAttribute('aria-pressed', 'true');
+  await audio.getByRole('button', { name: '연결하지 않음', exact: true }).click();
+  await expect(audio.getByRole('button', { name: '연결하지 않음', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await dialog.evaluate(element => { element.scrollTop = 0; });
+  await page.screenshot({ path: 'artifacts/choice-buttons-editor-production.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: 'artifacts/choice-buttons-editor-mobile.png', fullPage: true });
+  expect(await (await page.request.get(`${base}/api/manifest`)).json()).toEqual(baseline);
+  expect(errors).toEqual([]);
+  console.log('PASS: deployed source buttons, keyboard selection without slide navigation, editor file buttons, selection state and mobile layout; server manifest unchanged.');
+} finally { await browser.close(); }

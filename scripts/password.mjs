@@ -5,4 +5,4 @@ for await (const chunk of process.stdin) { value += chunk; if (value.includes('\
 const password = value.trimEnd();
 if (password.length < 12) throw new Error('12자 이상 사용하세요.');
 const salt = randomBytes(16).toString('hex');
-console.log(`scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`);
+console.log(`scrypt:${salt}:${scryptSync(password, salt, 64).toString('hex')}`);

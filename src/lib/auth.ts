@@ -5,7 +5,9 @@ import { promisify } from 'node:util';
 
 export const COOKIE = 'worship-session';
 export class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
-export function cloudConfigured() { return Boolean(process.env.BLOB_READ_WRITE_TOKEN && process.env.ADMIN_PASSWORD_HASH && (process.env.SESSION_SECRET?.length ?? 0) >= 32); }
+const verifierPattern = /^scrypt([:$])[a-f0-9]{16,64}\1[a-f0-9]{128}$/;
+export function authConfigured() { return (process.env.SESSION_SECRET?.length ?? 0) >= 32 && verifierPattern.test(process.env.ADMIN_PASSWORD_HASH ?? ''); }
+export function cloudConfigured() { return Boolean(process.env.BLOB_READ_WRITE_TOKEN && authConfigured()); }
 function secret() {
   if ((process.env.SESSION_SECRET?.length ?? 0) < 32) throw new HttpError(503, '서버 인증 설정이 필요합니다.');
   return new TextEncoder().encode(process.env.SESSION_SECRET!);
@@ -15,15 +17,20 @@ export async function verifySession(token?: string) {
   try { const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'], issuer: 'worship', audience: 'operator' }); return payload.sub === 'admin'; } catch { return false; }
 }
 export async function requireAdmin() {
-  if (!cloudConfigured()) throw new HttpError(503, 'Vercel Blob과 관리자 환경변수를 먼저 설정해 주세요.');
   if (!await verifySession((await cookies()).get(COOKIE)?.value)) throw new HttpError(401, '로그인이 필요합니다.');
+  if (!cloudConfigured()) throw new HttpError(503, 'Vercel Blob과 관리자 환경변수를 먼저 설정해 주세요.');
 }
 export function sameOrigin(req: Request) {
-  if (req.headers.get('origin') !== new URL(req.url).origin) throw new HttpError(403, '허용되지 않은 요청입니다.');
+  // Next may construct req.url with its internal hostname (localhost), even
+  // when the browser reached the server through 127.0.0.1 or a public domain.
+  const url = new URL(req.url);
+  const origin = `${url.protocol}//${req.headers.get('host') || url.host}`;
+  if (req.headers.get('origin') !== origin) throw new HttpError(403, '허용되지 않은 요청입니다.');
 }
 export async function passwordMatches(password: string) {
-  const [format, salt, hex] = (process.env.ADMIN_PASSWORD_HASH ?? '').split('$');
-  if (format !== 'scrypt' || !/^[a-f0-9]{32}$/.test(salt ?? '') || !/^[a-f0-9]{128}$/.test(hex ?? '')) throw new HttpError(503, '관리자 비밀번호 해시를 확인해 주세요.');
+  const verifier = process.env.ADMIN_PASSWORD_HASH ?? '';
+  if (!verifierPattern.test(verifier)) return false;
+  const [, salt, hex] = verifier.split(/[:$]/);
   const derived = await promisify(scrypt)(password, salt, 64) as Buffer;
   return timingSafeEqual(derived, Buffer.from(hex, 'hex'));
 }

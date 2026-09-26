@@ -1,2 +1,3 @@
 import { Console } from '@/components/Console';
-export default function WorshipPage() { return <Console />; }
+import { AuthenticatedPage } from '@/components/AuthenticatedPage';
+export default function WorshipPage() { return <AuthenticatedPage><Console /></AuthenticatedPage>; }

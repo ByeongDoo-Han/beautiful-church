@@ -62,12 +62,13 @@ type Snapshot = {
 | 라우트 | 요청 | 성공 응답 | 인증/오류 |
 | --- | --- | --- | --- |
 | GET `/api/config` | 없음 | `{cloud, authenticated}` | 비밀 값은 포함하지 않음 |
-| POST `/api/login` | `{password}` | `{ok:true}` + HttpOnly 쿠키 | Origin, 비밀번호 검증; 400/401/403/503 |
+| POST `/api/login` | `{username, password}` | `{ok:true}` + HttpOnly 쿠키 | Origin, 고정 관리자 계정 검증; 400/401/403/503 |
 | POST `/api/logout` | 없음 | `{ok:true}` + 쿠키 만료 | Origin 확인; PC 파일은 유지 |
-| GET `/api/manifest` | 세션 쿠키 | `{manifest, etag}` | 관리자 인증; 없으면 빈 manifest |
+| GET `/api/files` | 세션 쿠키, 선택 `cursor` | `{files: [{pathname, name, kind, size, uploadedAt, registered}], nextCursor}` | 관리자 인증, 실제 Blob 100개 단위 조회; 예배 설정 파일 제외; 400/401/503 |
+| GET `/api/manifest` | 세션 쿠키 | `{manifest, etag}` | 관리자 인증; no-store; 없으면 빈 manifest |
 | PUT `/api/manifest` | `{manifest, etag: string|null}` | 새 `{manifest, etag}` | 관리자/Origin, 256KiB 본문 제한, 참조 파일 확인, 409 경합 |
 | POST `/api/upload` | `@vercel/blob/client`의 `HandleUploadBody` | SDK client token 또는 callback 응답 | 토큰 발급 시 관리자/Origin/경로/저장량 확인. 완료 callback은 SDK 서명 검증 |
-| GET `/api/signed-url?id=...` | manifest에 등록된 자료 ID | `{url, expiresAt}` | 관리자 인증. 임의 URL/경로 서명 불가 |
+| GET `/api/signed-url?id=...` | manifest에 등록된 자료 ID | `{url, expiresAt}` | 관리자 인증 후 저장본에 등록된 파일만 허용. 임의 URL/경로 서명 불가 |
 
 모든 API 응답은 `Cache-Control: no-store`입니다. 일반 오류 응답은 `{error:string}`이며 내부 예외나 자격증명은 응답에 노출하지 않습니다.
 
@@ -114,10 +115,48 @@ ResizeObserver로 비율을 유지해 확대/축소합니다. PDF 래스터를 2
 
 - IndexedDB `beautiful-church-v1`: `files`에 원본 Blob, `metadata`에 local/cloud별 manifest와 ETag.
 - 파일 불러오기/다운로드 시 저장하며 서버 파일은 크기와 SHA-256도 확인합니다. 만료된 URL로 401/403을 받으면 새 URL을 요청합니다. 캐시에 있으면 서버 요청 없이 읽습니다.
-- Service Worker: `/admin`, `/worship`, `/output`, `/login`의 공개 앱 shell + Next.js chunks + PDF.js 로컬 자원. 서명 URL, API 응답, 세션 쿠키는 Cache Storage에 넣지 않습니다.
+- Service Worker: `/login`의 공개 앱 shell + Next.js chunks + PDF.js 로컬 자원. 서명 URL, API 응답, 세션 쿠키는 Cache Storage에 넣지 않습니다.
 - 예배 자료 다운로드는 순서가 참조하는 모든 MP3/PPTX/PDF를 먼저 저장한 후 렌더러 및 app shell 캐시 완료를 확인합니다. 중간 실패 시 성공했다고 표시하지 않습니다.
 - 저장 완료 여부는 이 브라우저 프로필 기준입니다. OS 저장공간 부족·브라우저 데이터 삭제/퇴거는 막을 수 없습니다. `navigator.storage.persist()`를 요청하지만 승인을 보장하지 않습니다.
 
 ## 의도한 범위
 
 계정별 다중 교회, 실시간 다중 운영자 공동편집, 애니메이션 타임라인, 원격 기기 프로젝터 제어, PowerPoint 원본과의 픽셀 일치, 자동 PPTX→PDF 변환, Blob 자동 삭제는 포함하지 않습니다. 공유 manifest 동시 저장 충돌은 방지하지만 두 운영자가 같은 예배를 동시에 지휘하는 기능은 제공하지 않습니다.
+
+## 유튜브 재생
+
+카드의 선택 필드 `audioSource: 'mp3' | 'youtube'`와 `youtube: {videoId, startSeconds}`를 manifest에 저장합니다. 기존 카드에서 `audioSource`가 없으면 MP3 모드로 동작합니다. 허용된 YouTube URL의 11자 videoId와 시작 위치만 저장하며 임의 iframe 주소를 받지 않습니다. `YouTubePlayer`는 운영자 Console에만 생성됩니다. Output으로 전송되는 Snapshot에는 유튜브 설정이 없고 기존 프레젠테이션 Asset과 슬라이드 상태만 전달됩니다. MP3와 YouTube 컴포넌트는 조건부로 하나만 마운트하며 카드 ID로 수명을 분리합니다.
+
+## 카드별 PPTX 편집
+
+`Item.presentationEdit`는 원본 assetId, UUID version, 1~1,000개 슬라이드 인스턴스(id/source/texts)를 저장합니다. 복사는 원본 장 인덱스를 공유하고 새 인스턴스 ID와 독립 텍스트 오버라이드를 갖습니다. 삭제는 인스턴스 목록에서만 제거하며 Blob 원본은 유지합니다. 카드의 presentationId 변경 시 편집 필드를 지웁니다. 기존 version 1 manifest에는 선택 필드이므로 이전 데이터와 호환됩니다.
+
+렌더러가 lazy sourceXml을 소비하기 전에 XML을 Deck 캐시에 보관합니다. 변경된 장은 별도 XML 문서에서 txBody를 수정하고 fresh SlideData로 다시 파싱합니다. 공유 PresentationData의 슬라이드를 수정하지 않습니다. 변경한 문단은 첫 run의 rPr와 문단 pPr를 유지하며, 문자열은 textContent로 넣어 XML 특수문자를 이스케이프합니다. 그룹·표 내부 txBody도 동일하게 처리합니다. 원본 마스터, 이미지 및 차트는 편집 대상에서 제외합니다.
+
+편집창은 독립 초안과 200ms 지연 미리보기를 사용합니다. 적용 시에만 manifest 및 Snapshot의 presentationEdit를 함께 바꿉니다. 출력 확인 키에 edit version을 포함해 같은 장 문구 변경도 새 렌더로 확인합니다. PDF 대체에는 편집을 적용하지 않습니다. 전체 manifest UTF-8 크기 1,500KiB와 API 요청 2MiB 제한, 문구별 10,000자 제한을 둡니다. 기존 ETag 충돌 제어와 관리자 인증은 동일하게 적용합니다.
+
+## 예배 순서별 슬라이드 유지 구간
+
+`Item.slideHoldCount?: number`는 현재 순서를 포함한 1~100개 개수입니다. 필드가 없으면 1입니다. `presentationRange`는 목록 처음부터 겹치지 않는 구간을 계산하며 프레젠테이션이 없는 시작 카드는 구간을 확장하지 않습니다. 선택 클릭 이력에 의존하지 않으므로 중간 카드 직접 선택과 재접속이 일치합니다. 구간 안의 별도 유지 설정은 상위 구간을 확장하지 않습니다.
+
+Console은 선택 카드(active)의 음원과 구간 시작 카드(presentationOwner)의 자료를 분리합니다. PPTX 편집, PDF 대체, 슬라이드 편집 저장 대상은 시작 카드에서 가져옵니다. Snapshot의 선택적 presentationOwnerId로 구간 경계를 판별하여 같은 파일이라도 새 구간에 진입하면 첫 장을 보여주고, 구간 안에서는 현재 장을 유지합니다. 이전 Snapshot에는 이 필드가 없으므로 최초 복원 시 기존 페이지를 유지합니다.
+
+## 명시적 PPT 섹션 (2026-09-21)
+
+`Manifest.sections?: PresentationSection[]`에 id, presentationId, fallbackPdfId, presentationEdit, itemIds를 저장합니다. 순서 카드의 음원과 섹션의 프레젠테이션을 분리합니다. 섹션을 순서대로 펼친 itemIds는 manifest.items의 ID 순서와 정확히 일치해야 하며 서버 Zod 검증에서 누락·중복·알 수 없는 참조·순서 불일치·잘못된 파일 종류를 거부합니다. 최대 100개 섹션/100개 카드입니다.
+
+`withSections`는 기존 숫자 범위를 한 번만 명시적 섹션으로 변환하고 원래 카드 필드도 유지합니다. 이미 sections가 있으면 레거시 범위를 다시 계산하지 않습니다. 예전 첫 카드 ID를 섹션 ID로 사용하므로 기존 출력 snapshot의 소유자 ID와 일치합니다. 새로 만든 섹션은 별도 UUID를 사용합니다. 실제 표시/편집은 섹션 메타데이터를 따르며 첫 카드 이동/삭제로 섹션 편집이 사라지지 않습니다.
+
+`moveCard`는 한 번에 원래 섹션에서 제거하고 대상 위치에 삽입한 뒤 items의 전체 순서를 재구성합니다. 섹션 내 이동은 현재 페이지를 유지하고 다른 섹션으로 활성 카드를 옮기면 해당 섹션의 첫 장을 표시합니다. 빈 섹션도 유지합니다. 네이티브 drag-and-drop은 이 목록에서 시작한 카드만 받으며, 메뉴/섹션 선택으로 키보드와 터치 이동도 가능합니다. 포인터를 누른 카드 ID를 기록하고 focus({preventScroll:true})를 사용해 포커스에 의한 스크롤 중 잘못된 카드가 드래그되지 않도록 합니다.
+
+서버는 ETag 검증 외에 기존 sections가 있는 문서를 sections 없이 저장하려는 구버전 앱 요청을 409로 거부합니다. 예전 브라우저 탭이 알 수 없는 필드를 제거해 배치를 덮어쓰는 것을 방지합니다. 오프라인 준비 파일 목록은 섹션의 PPT/PDF 참조도 포함합니다.
+
+
+## 로그인 경계와 편집본 캐시
+
+`AuthenticatedPage`가 `/admin`, `/worship`, `/output`의 세션 쿠키를 서버에서 검증하고 비로그인 요청을 `/login`으로 보냅니다. `SessionGate`는 새 문서에서 서버 세션 확인 후에만 자료 컴포넌트를 마운트합니다. 포커스·온라인 복구·60초 간격으로 세션을 재확인하고, 다른 탭의 로그아웃에도 로그인 화면으로 이동합니다. 모든 자료 API는 요청마다 서버 인증을 수행합니다. Service Worker는 보호된 페이지 HTML을 저장하지 않으며, 오프라인 문서 요청은 로그인 화면으로 보냅니다. 이미 인증된 열린 화면에서는 캐시한 자료로 운영을 계속할 수 있습니다.
+
+클라우드 관리자 초안은 `cloud-draft`, 로그인 후 사용하는 서버 저장본 캐시는 `cloud-published`에 보관합니다. 인증된 클라우드 화면이 온라인 진입 시 서버 GET을 우선하고 실패 시 서버 저장본 캐시만 표시합니다. 기존 `cloud` 관리자 캐시는 현재 서버 저장본과 다를 때 복구용 초안으로 이관하고 기본 표시에는 사용하지 않습니다. 파일 Blob 캐시는 내용 해시 기준으로 공유합니다. 순서 삭제는 manifest의 카드 및 섹션 멤버십만 갱신하며 Blob 파일 삭제를 호출하지 않습니다.
+
+
+서버 저장본 표시 중에는 관리자도 포커스/온라인/주기 갱신을 받습니다. 편집 콜백이 dirty ref를 즉시 설정하고 초안 쓰기를 직렬화합니다. 이미 시작한 GET도 완료 시 dirty/편집창 상태를 재검사하여 작업을 덮어쓰지 않습니다. 초안 복구 시 원래 ETag를 유지하므로 오래된 초안을 서버에 저장하면 409 검사를 통과할 수 없습니다. 서버 PUT 성공 후에는 표시 상태를 서버 저장본으로 전환하고 PC 캐시/초안을 정리합니다. 미저장 상태에서 예배 자료 다운로드를 실행해도 서버 저장본 캐시를 편집본으로 바꾸지 않습니다.

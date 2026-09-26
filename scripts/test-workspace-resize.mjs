@@ -1,0 +1,44 @@
+import { startLocalAdminDraft } from './smoke-draft.mjs';
+// Fresh authenticated browser; all imported files and layout preferences stay local.
+import { chromium, expect } from '@playwright/test';
+const base = process.env.RESIZE_TEST_BASE_URL || 'https://beautiful-church-tau.vercel.app';
+const browser = await chromium.launch({ channel: 'chrome' });
+try {
+  const context = await browser.newContext({ viewport: { width: 1512, height: 982 } });
+  context.setDefaultTimeout(30000);
+  const page = await context.newPage();
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await startLocalAdminDraft(page, base);
+  await page.goto(`${base}/admin`);
+  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByLabel('예배 파일 불러오기').setInputFiles('public/demo/welcome.pptx');
+  await expect(page.getByRole('status')).toContainText('1개 파일');
+  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  const current = page.getByRole('img', { name: '현재 슬라이드 미리보기' });
+  await expect(current).toContainText('우리 함께 예배합니다');
+  const popup = page.waitForEvent('popup');
+  await page.getByRole('button', { name: '출력창 열기', exact: true }).click();
+  const output = await popup;
+  const live = output.getByRole('img', { name: '출력 슬라이드' });
+  await expect(live).toContainText('우리 함께 예배합니다');
+  const divider = page.getByRole('separator');
+  const box = await divider.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, 300); await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 200, 300, { steps: 12 }); await page.mouse.up();
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '464px');
+  await divider.press('ArrowRight');
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '474px');
+  await expect(live).toContainText('우리 함께 예배합니다');
+  await expect(current).toContainText('우리 함께 예배합니다');
+  await page.reload(); await page.getByRole('button', { name: '미저장 편집본 복구', exact: true }).click();
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '474px');
+  await expect(current).toContainText('우리 함께 예배합니다');
+  await page.screenshot({ path: 'artifacts/resizable-workspace-production.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(divider).toBeHidden();
+  await page.setViewportSize({ width: 1512, height: 982 });
+  await expect(page.locator('.sidebar')).toHaveCSS('width', '474px');
+  await divider.dblclick(); await expect(page.locator('.sidebar')).toHaveCSS('width', '264px');
+  expect(errors).toEqual([]);
+  console.log('PASS: production drag, keyboard, reload persistence, mobile layout, reset, and unchanged screen 2; server library unchanged');
+} finally { await browser.close(); }

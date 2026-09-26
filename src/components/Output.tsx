@@ -48,8 +48,8 @@ export function Output() {
   }, [fullscreen, report]);
   return <main className={`output-page ${controls ? '' : 'presentation-running'}`} onDoubleClick={() => setControls(v => !v)}>
     <div className="output-slide" style={{ visibility: state.blackout ? 'hidden' : 'visible' }}>
-      <SlideView asset={state.asset} index={state.slide} label="출력 슬라이드" onReady={() => { status.current.renderedKey = slideKey(state); report(); }} onError={error => { status.current.error = error; report(); }} />
+      <SlideView asset={state.asset} edit={state.presentationEdit} index={state.slide} label="출력 슬라이드" onReady={() => { status.current.renderedKey = slideKey(state); report(); }} onError={error => { status.current.error = error; report(); }} />
     </div>
-    {controls && <div className="output-setup"><span className="eyebrow">BEAUTIFUL CHURCH · OUTPUT</span><h1>예배 화면을 준비해 주세요</h1><p>{notice || '전체화면으로 슬라이드만 표시합니다.'}</p><button className="primary" onClick={fullscreen}><Maximize2 size={18} />전체화면 시작</button><button onClick={() => setControls(false)}>슬라이드만 표시</button><small>F 전체화면 · Esc 안내 표시 · 더블클릭 안내 숨기기/표시</small></div>}
+    {controls && <div className="output-setup"><span className="eyebrow">아름다운교회 영아부 · 출력 화면</span><h1>예배 화면을 준비해 주세요</h1><p>{notice || '전체화면으로 슬라이드만 표시합니다.'}</p><button className="primary" onClick={fullscreen}><Maximize2 size={18} />전체화면 시작</button><button onClick={() => setControls(false)}>슬라이드만 표시</button><small>F 전체화면 · Esc 안내 표시 · 더블클릭 안내 숨기기/표시</small></div>}
   </main>;
 }
