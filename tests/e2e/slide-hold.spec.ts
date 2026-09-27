@@ -49,8 +49,11 @@ test('drag cards between PPT sections and reorder them while preserving page and
   await expect(source.locator('[data-card-id]')).toHaveCount(3);
   await expect(source.locator('header')).toContainText('3개 예배 순서');
   await page.getByRole('button', { name: /함께 드리는 기도/ }).click();
-  await expect(current).toContainText('찬양으로 마음을 모읍니다'); await expect(live).toContainText('찬양으로 마음을 모읍니다');
+  await expect(current).toContainText('우리 함께 예배합니다'); await expect(live).toContainText('우리 함께 예배합니다');
+  await page.getByRole('button', { name: '다음 슬라이드', exact: true }).click();
   await page.locator('[data-card-id="praise"] .queue-item').click();
+  await expect(current).toContainText('우리 함께 예배합니다');
+  await page.getByRole('button', { name: '다음 슬라이드', exact: true }).click();
   await page.getByRole('button', { name: '찬양 재생', exact: true }).click();
   await expect(page.getByRole('button', { name: '찬양 일시정지', exact: true })).toBeVisible();
   await dragCard(page, page.locator('[data-card-id="praise"]'), page.locator('[data-card-id="welcome"]'));
@@ -63,12 +66,14 @@ test('drag cards between PPT sections and reorder them while preserving page and
   await expect(page.locator('.current-preview canvas')).toBeVisible();
   await page.getByRole('button', { name: '다음 슬라이드', exact: true }).click();
   await page.getByRole('button', { name: /함께 드리는 기도/ }).click();
+  await expect(page.locator('.slide-counter')).toHaveText('01/ 03');
+  await page.getByRole('button', { name: '다음 슬라이드', exact: true }).click();
   await expect(page.locator('.slide-counter')).toHaveText('02/ 03');
   await page.reload(); await expect(page.locator('.current-preview canvas')).toBeVisible();
   await expect(page.locator('.slide-counter')).toHaveText('02/ 03');
-  // Moving the active card to an empty section changes only its presentation.
+  // Moving the active card preserves its saved position for the same PDF.
   await dragCard(page, page.locator('[data-card-id="prayer"]'), page.locator('[data-section-id="prayer"] .section-drop-end'));
-  await expect(page.locator('.slide-counter')).toHaveText('01/ 03');
+  await expect(page.locator('.slide-counter')).toHaveText('02/ 03');
   await expect(page.locator('.current-preview canvas')).toBeVisible();
   expect(errors).toEqual([]);
 });

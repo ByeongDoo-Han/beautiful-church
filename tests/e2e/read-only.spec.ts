@@ -98,7 +98,9 @@ test('an authenticated operator receives saved text, slide copies and deletions 
   await expect(current).toContainText('서버 저장 후 자동 반영', { timeout: 25000 });
   await expect(live).toContainText('서버 저장 후 자동 반영');
   await expect(page.locator('.slide-counter')).toContainText('/ 04');
-  await page.getByRole('button', { name: '다음 슬라이드', exact: true }).click();
+  // A page saved on another device is received along with the section edits.
+  published = { ...published, items: published.items.map(item => item.id === 'welcome' ? { ...item, slidePositions: { 'demo-pptx': 1 } } : item) }; revision++;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(current).toContainText('서버에서 복사한 장'); await expect(live).toContainText('서버에서 복사한 장');
   const shortened = { ...edit, version: crypto.randomUUID(), slides: [edit.slides[0]] };
   published = withSections(patchSection(published, 'welcome', { presentationEdit: shortened })); revision++;

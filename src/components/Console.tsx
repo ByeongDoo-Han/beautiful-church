@@ -40,7 +40,7 @@ export function Console() {
     if (JSON.stringify(value) === JSON.stringify(manifestRef.current)) return;
     setCloudSaved(false);
     if (mode === 'cloud') { dirtyRef.current = true; setDirty(true); persistDraft({ manifest: value, etag: etagRef.current }); }
-    setManifest(value);
+    manifestRef.current = value; setManifest(value);
   };
   const editManifest = (value: Manifest) => { if (canEdit && !busy) applyEdit(value); };
   const [slideEditorOpen, setSlideEditorOpen] = useState(false);
@@ -82,6 +82,7 @@ export function Console() {
   const asset = manifest.assets.find(a => a.id === assetId) ?? null;
   const presentationEdit = asset?.kind === 'pptx' && presentationOwner?.presentationEdit?.assetId === asset.id ? presentationOwner.presentationEdit : undefined;
   const audio = manifest.assets.find(a => a.id === active?.audioId) ?? null;
+  const savedSlide = asset ? active?.slidePositions?.[asset.id] ?? 0 : 0;
 
   const change = useCallback((patch: Partial<Snapshot>) => {
     const next = { ...stateRef.current, ...patch, revision: stateRef.current.revision + 1 };
@@ -89,7 +90,19 @@ export function Console() {
     bus.current?.send({ type: 'state', state: next });
     try { sessionStorage.setItem('worship-state', JSON.stringify(next)); } catch { /* live state still works when storage is unavailable */ }
   }, []);
-  const navigate = useCallback((delta: number) => { const current = stateRef.current; change({ slide: slideIndex(current.slide + delta, current.count) }); }, [change]);
+  // Keep the output-window listener stable while using the latest edit/save state.
+  const navigateAction = useRef<(delta: number) => void>(() => {});
+  navigateAction.current = delta => {
+    if (!canEdit || busy) return;
+    const current = stateRef.current;
+    if (!current.asset || !current.itemId || !current.count) return;
+    const slide = slideIndex(current.slide + delta, current.count);
+    if (slide === current.slide) return;
+    const value = manifestRef.current;
+    applyEdit({ ...value, items: value.items.map(item => item.id === current.itemId ? { ...item, slidePositions: { ...item.slidePositions, [current.asset!.id]: slide } } : item) });
+    change({ slide });
+  };
+  const navigate = useCallback((delta: number) => navigateAction.current(delta), []);
   useEffect(() => {
     let cancelled = false;
     setNow(Date.now()); setOnline(navigator.onLine); setScreenSupported(typeof (window as ManagedWindow).getScreenDetails === 'function');
@@ -136,10 +149,18 @@ export function Console() {
           } catch { if (!cancelled) setMessage('서버 저장본을 표시합니다. PC 편집본 보관 상태를 확인하지 못했습니다.'); }
         }
       }
-      const value = withSections(saved ? manifestSchema.parse(saved.manifest) : config.cloud ? emptyManifest : demoManifest);
+      let value = withSections(saved ? manifestSchema.parse(saved.manifest) : config.cloud ? emptyManifest : demoManifest);
       if (cancelled) return;
-      setMode(namespace); setAuthenticated(config.authenticated); setManifest(value); setEtag(saved?.etag ?? null);
       const selectedId = sessionStorage.getItem('worship-selected') ?? value.items[0]?.id ?? '';
+      const restored = stateRef.current;
+      const owner = currentSection(value, selectedId)?.owner;
+      // A reload can interrupt the last asynchronous local write. The live
+      // snapshot is synchronous; recover only its matching local card/file.
+      // Cloud sessions always use the published manifest until draft recovery.
+      if (!config.cloud && restored.itemId === selectedId && restored.asset && [owner?.presentationId, owner?.fallbackPdfId].includes(restored.asset.id)) {
+        value = { ...value, items: value.items.map(item => item.id === selectedId ? { ...item, slidePositions: { ...item.slidePositions, [restored.asset!.id]: restored.slide } } : item) };
+      }
+      setMode(namespace); setAuthenticated(config.authenticated); setManifest(value); setEtag(saved?.etag ?? null);
       setSelected(selectedId); setUsePdf(currentSection(value, selectedId)?.owner.fallbackPdfId === stateRef.current.asset?.id && !!stateRef.current.asset); setReady(true);
     })().catch(e => { if (!cancelled) { setMessage(errorText(e)); setReady(true); } });
     const network = () => setOnline(navigator.onLine); window.addEventListener('online', network); window.addEventListener('offline', network);
@@ -154,12 +175,15 @@ export function Console() {
     if (!ready) return;
     const old = stateRef.current;
     const assetChanged = old.asset?.id !== asset?.id;
-    const ownerChanged = old.presentationOwnerId !== undefined && old.presentationOwnerId !== presentationOwner?.id;
-    if (assetChanged || old.title !== active?.title || old.presentationOwnerId !== presentationOwner?.id || old.presentationEdit?.version !== presentationEdit?.version) {
-      const count = presentationEdit?.slides.length ?? (assetChanged ? 0 : old.count);
-      setRenderError(''); change({ asset, title: active?.title ?? '', presentationOwnerId: presentationOwner?.id, presentationEdit, count, slide: assetChanged || ownerChanged ? 0 : slideIndex(old.slide, count) });
+    const editChanged = old.presentationEdit?.version !== presentationEdit?.version;
+    const count = presentationEdit?.slides.length ?? (assetChanged || editChanged ? 0 : old.count);
+    // Retain the requested page until an asynchronously loaded file reports its
+    // count. Clamping against zero here would discard saved pages on reload.
+    const slide = count ? slideIndex(savedSlide, count) : savedSlide;
+    if (assetChanged || old.itemId !== active?.id || old.title !== active?.title || old.presentationOwnerId !== presentationOwner?.id || editChanged || old.slide !== slide) {
+      setRenderError(''); change({ asset, title: active?.title ?? '', itemId: active?.id, presentationOwnerId: presentationOwner?.id, presentationEdit, count, slide });
     } else if (old.revision === 0) change({});
-  }, [asset, active?.title, presentationOwner?.id, presentationEdit, ready, change]);
+  }, [asset, active?.id, active?.title, savedSlide, presentationOwner?.id, presentationEdit, ready, change]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const element = e.target as HTMLElement;
@@ -305,11 +329,11 @@ export function Console() {
       {canEdit && mode === 'cloud' && <div className="library-source"><span>{dirty ? '미저장 편집 중 · 서버 저장 전에는 관리자 화면에만 표시됩니다.' : '서버 저장본 · 다른 로그인 기기와 같은 자료를 표시합니다.'}</span>{!dirty && savedDraft && <div><span>이 PC에 보관된 편집본이 있습니다.</span><button disabled={!!busy} onClick={restoreDraft}>미저장 편집본 복구</button><button disabled={!!busy} onClick={async () => { if (!confirm('이 PC에 보관된 미저장 편집본을 삭제할까요? 서버 저장본은 유지됩니다.')) return; try { await draftWrites.current; await deleteLocalManifest('cloud-draft'); setSavedDraft(null); } catch (error) { setMessage(errorText(error)); } }}>편집본 삭제</button></div>}</div>}
       {message && <div className="notice" role="status"><span>{message}</span><button aria-label="안내 닫기" onClick={() => setMessage('')}><X size={15} /></button></div>}
       <div className="view-heading"><div><span className="eyebrow">PRESENTATION</span><h2>{active?.title ?? (canEdit ? '첫 예배 순서를 추가해 주세요' : '등록된 예배 순서가 없습니다')}</h2></div><div className="format-switch">{canEdit && asset?.kind === 'pptx' && <button disabled={!!busy || !state.count} onClick={() => setSlideEditorOpen(true)}><Edit3 size={15} />슬라이드 편집</button>}{presentationOwner?.fallbackPdfId && <button aria-label={usePdf ? 'PPTX로 돌아가기' : 'PDF로 전환'} onClick={() => { setUsePdf(v => !v); setRenderError(''); }}>{usePdf ? 'PPTX로 돌아가기' : 'PDF로 전환'}</button>}</div></div>
-      {range && range.count > 1 && <p className="slide-hold-status" role="status">‘{range.owner.title}’ 슬라이드 유지 · {range.position}/{range.count}번째 순서 · 같은 PPT 섹션</p>}
-      <section className="preview-grid"><div className="current-preview"><div className="preview-title"><span><Radio size={13} />현재 슬라이드</span><span>{state.count ? `${state.slide + 1} / ${state.count}` : '—'}</span></div><SlideView asset={state.asset} edit={state.presentationEdit} index={state.slide} label="현재 슬라이드 미리보기" onReady={count => { if (stateRef.current.asset?.id === state.asset?.id && stateRef.current.count !== count) change({ count, slide: slideIndex(stateRef.current.slide, count) }); }} onError={setRenderError} /><div className="preview-footer"><span><span className="live-dot" />{state.blackout ? '출력 화면 가림' : rendered ? '출력창과 동기화됨' : '운영자 미리보기'}</span><span>{state.asset?.name ?? 'PPTX / PDF'}</span></div></div>
+      {range && range.count > 1 && <p className="slide-hold-status" role="status">‘{range.owner.title}’ · {range.position}/{range.count}번째 순서 · 슬라이드 번호는 순서별로 저장</p>}
+      <section className="preview-grid"><div className="current-preview"><div className="preview-title"><span><Radio size={13} />현재 슬라이드</span><span>{state.count ? `${state.slide + 1} / ${state.count}` : '—'}</span></div><SlideView key={`${state.itemId}:${state.asset?.id}:${state.presentationEdit?.version}`} asset={state.asset} edit={state.presentationEdit} index={state.slide} label="현재 슬라이드 미리보기" onReady={count => { if (stateRef.current.itemId === state.itemId && stateRef.current.asset?.id === state.asset?.id && stateRef.current.presentationEdit?.version === state.presentationEdit?.version && (stateRef.current.count !== count || stateRef.current.slide >= count)) change({ count, slide: slideIndex(stateRef.current.slide, count) }); }} onError={setRenderError} /><div className="preview-footer"><span><span className="live-dot" />{state.blackout ? '출력 화면 가림' : rendered ? '출력창과 동기화됨' : '운영자 미리보기'}</span><span>{state.asset?.name ?? 'PPTX / PDF'}</span></div></div>
       <div className="next-preview"><div className="preview-title"><span>다음 슬라이드</span><span>NEXT</span></div>{state.asset && state.count > 0 && state.slide + 1 < state.count ? <SlideView asset={state.asset} edit={state.presentationEdit} index={state.slide + 1} label="다음 슬라이드 미리보기" /> : <div className="end-preview"><Check size={26} /><span>{state.count ? '마지막 슬라이드입니다' : '슬라이드를 준비해 주세요'}</span></div>}<div className="next-tip"><ArrowRight size={16} /><p>다음 장을 미리 확인하고<br />차분하게 예배를 이어가세요.</p></div></div></section>
       {(renderError || output?.error) && <div className="notice warning" role="alert">{renderError || output?.error} {asset?.kind === 'pptx' && 'PDF를 연결한 뒤 전환할 수 있습니다.'}</div>}
-      <section className="presentation-controls"><div className="slide-navigation"><button aria-label="이전 슬라이드" disabled={!state.count || state.slide === 0} onClick={() => navigate(-1)}><ArrowLeft size={18} />이전</button><span className="slide-counter"><strong>{state.count ? String(state.slide + 1).padStart(2, '0') : '—'}</strong><span>/ {String(state.count).padStart(2, '0')}</span></span><button aria-label="다음 슬라이드" disabled={!state.count || state.slide >= state.count - 1} onClick={() => navigate(1)}>다음<ArrowRight size={18} /></button></div><div className="output-actions"><button className={state.blackout ? 'active-toggle' : ''} onClick={() => change({ blackout: !state.blackout })}><Moon size={17} />{state.blackout ? '가림 해제' : '화면 가리기'}</button><button disabled={!opened} onClick={fullscreen}><Maximize2 size={17} />전체화면 요청</button><button title="출력창 전체화면 해제" aria-label="출력창 전체화면 해제" disabled={!output?.fullscreen} onClick={() => bus.current?.send({ type: 'command', command: 'exit-fullscreen' })}><Monitor size={17} /></button><button aria-label="출력창 닫기" disabled={!opened} onClick={() => { bus.current?.send({ type: 'command', command: 'close' }); outputWindow.current?.close(); setOpened(false); setOutput(null); }}><X size={17} /></button></div></section>
+      <section className="presentation-controls"><div className="slide-navigation"><button aria-label="이전 슬라이드" disabled={!!busy || !state.count || state.slide === 0} onClick={() => navigate(-1)}><ArrowLeft size={18} />이전</button><span className="slide-counter"><strong>{state.count ? String(state.slide + 1).padStart(2, '0') : '—'}</strong><span>/ {String(state.count).padStart(2, '0')}</span></span><button aria-label="다음 슬라이드" disabled={!!busy || !state.count || state.slide >= state.count - 1} onClick={() => navigate(1)}>다음<ArrowRight size={18} /></button></div><div className="output-actions"><button className={state.blackout ? 'active-toggle' : ''} onClick={() => change({ blackout: !state.blackout })}><Moon size={17} />{state.blackout ? '가림 해제' : '화면 가리기'}</button><button disabled={!opened} onClick={fullscreen}><Maximize2 size={17} />전체화면 요청</button><button title="출력창 전체화면 해제" aria-label="출력창 전체화면 해제" disabled={!output?.fullscreen} onClick={() => bus.current?.send({ type: 'command', command: 'exit-fullscreen' })}><Monitor size={17} /></button><button aria-label="출력창 닫기" disabled={!opened} onClick={() => { bus.current?.send({ type: 'command', command: 'close' }); outputWindow.current?.close(); setOpened(false); setOutput(null); }}><X size={17} /></button></div></section>
       {canEdit && active && <section className="inline-audio-editor" aria-label="선택한 예배 순서 음원 편집">
         <ChoiceButtons className="audio-source-field" label="찬양 재생 방식" ariaLabel={`${active.title} 재생 방식`} disabled={!!busy} value={active.audioSource ?? 'mp3'} onChange={source => editManifest({ ...manifest, items: manifest.items.map(item => item.id === active.id ? { ...item, audioSource: source as 'mp3' | 'youtube' } : item) })} options={[{ value: 'mp3', label: 'MP3 음원 파일' }, { value: 'youtube', label: '유튜브 링크 · 화면 1' }]} />
         {active.audioSource !== 'youtube' && <ChoiceButtons label="찬양 MP3" ariaLabel={`${active.title} 찬양 MP3`} value={active.audioId ?? ''} disabled={!!busy} onChange={id => editManifest({ ...manifest, items: manifest.items.map(item => item.id === active.id ? { ...item, audioId: id || undefined } : item) })} options={[{ value: '', label: '연결하지 않음' }, ...manifest.assets.filter(a => a.kind === 'mp3').map(a => ({ value: a.id, label: a.name }))]} />}
@@ -322,7 +346,8 @@ export function Console() {
     </main>
     {canEdit && slideEditorOpen && asset?.kind === 'pptx' && presentationOwner && <SlideEditor key={presentationOwner.id} scopeLabel={range && range.count > 1 ? `‘${presentationOwner.title}’ 섹션의 ${range.count}개 순서에 적용` : undefined} asset={asset} initialEdit={presentationEdit} initialIndex={state.slide} onClose={() => setSlideEditorOpen(false)} onApply={(edit, index) => {
       if (!canEdit) return;
-      const next = patchSection(manifestRef.current, presentationOwner.id, { presentationEdit: edit });
+      const edited = patchSection(manifestRef.current, presentationOwner.id, { presentationEdit: edit });
+      const next = { ...edited, items: edited.items.map(item => item.id === active?.id ? { ...item, slidePositions: { ...item.slidePositions, [asset.id]: index } } : item) };
       const parsed = manifestSchema.safeParse(next);
       if (!parsed.success) throw new Error('편집 내용을 저장할 수 없습니다. 문구의 양이나 슬라이드 수를 줄여 주세요.');
       applyEdit(parsed.data); change({ presentationEdit: edit, slide: index, count: edit.slides.length }); setMessage('슬라이드 편집을 화면에 적용했습니다. 이 PC에 자동 저장되며, 서버 반영은 ‘서버 저장’을 눌러 주세요.');

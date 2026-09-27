@@ -28,6 +28,7 @@ export const itemSchema = z.object({
   audioSource: z.enum(['mp3', 'youtube']).optional(),
   youtube: z.object({ videoId: z.string().regex(/^[a-zA-Z0-9_-]{11}$/), startSeconds: z.number().int().min(0).max(86400) }).optional(),
   presentationEdit: presentationEditSchema.optional(),
+  slidePositions: z.record(id, z.number().int().min(0).max(999)).refine(v => Object.keys(v).length <= 200).optional(),
   slideHoldCount: z.number().int().min(1).max(100).optional(),
 });
 export const sectionSchema = z.object({
@@ -43,6 +44,9 @@ export const manifestSchema = z.object({
   const assets = new Map(m.assets.map(a => [a.id, a]));
   if (assets.size !== m.assets.length || new Set(m.items.map(i => i.id)).size !== m.items.length) ctx.addIssue({ code: 'custom', message: '중복 ID' });
   for (const item of m.items) {
+    for (const assetId of Object.keys(item.slidePositions ?? {})) {
+      if (!['pptx', 'pdf'].includes(assets.get(assetId)?.kind ?? '')) ctx.addIssue({ code: 'custom', message: '슬라이드 위치 자료 참조 오류' });
+    }
     if (item.presentationEdit && (item.presentationEdit.assetId !== item.presentationId || assets.get(item.presentationId!)?.kind !== 'pptx')) ctx.addIssue({ code: 'custom', message: '편집한 PPTX 참조 오류' });
     for (const [key, kinds] of [['audioId', ['mp3']], ['presentationId', ['pptx', 'pdf']], ['fallbackPdfId', ['pdf']]] as const) {
       const ref = item[key];
@@ -82,7 +86,7 @@ export const snapshotSchema = z.object({
   revision: z.number().int().nonnegative(), asset: assetSchema.nullable(),
   slide: z.number().int().min(0).max(999), count: z.number().int().min(0).max(1000),
   blackout: z.boolean(), title: z.string().max(100),
-  presentationOwnerId: id.optional(),
+  presentationOwnerId: id.optional(), itemId: id.optional(),
   presentationEdit: presentationEditSchema.optional(),
 });
 export type Snapshot = z.infer<typeof snapshotSchema>;
