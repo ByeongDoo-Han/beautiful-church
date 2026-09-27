@@ -99,7 +99,7 @@ test('a damaged PPTX can be replaced by its linked PDF without a server converte
   await expect(page.getByRole('status')).toContainText('1개 파일');
   await page.getByRole('group', { name: 'PPT 섹션 4 대체 PDF', exact: true }).getByRole('button', { name: '예배 안내.pdf', exact: true }).click();
   await page.getByRole('button', { name: '편집 완료', exact: true }).click(); await page.getByRole('button', { name: /04 damaged/ }).click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'PDF를 연결한 뒤 전환할 수 있습니다.' })).toBeVisible();
   await page.getByRole('button', { name: 'PDF로 전환', exact: true }).click(); await expect(page.locator('.current-preview canvas')).toBeVisible();
   await page.reload(); await expect(page.locator('.current-preview canvas')).toBeVisible();
 });
