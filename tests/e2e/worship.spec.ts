@@ -1,3 +1,4 @@
+import { editSection, renameCard } from '../helpers/queue';
 import { signIn } from '../helpers/admin';
 import { test, expect, type Page } from '@playwright/test';
 
@@ -39,13 +40,15 @@ test('PDF.js fallback renders in both windows and MP3 remains operator-only', as
   await page.getByRole('button', { name: /함께 드리는 기도/ }).click(); expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true);
 });
 test('real file import persists and can be paired in the editor', async ({ page }) => {
-  await openConsole(page); await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await openConsole(page); await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles(['welcome.pptx', 'welcome.pdf', 'tone.mp3'].map(f => path.resolve('public/demo', f)));
   await expect(page.getByRole('status')).toContainText('3개 파일');
-  const title = page.getByRole('textbox', { name: '항목 4 제목' }); await title.fill('새 찬양');
+  await renameCard(page, 'welcome', '새 찬양', 4);
+  await page.locator('[data-card-id]').filter({ has: page.getByRole('button', { name: /04 새 찬양/ }) }).getByRole('button', { name: /04 새 찬양/ }).click();
   await page.getByRole('group', { name: '새 찬양 찬양 MP3', exact: true }).getByRole('button', { name: 'tone.mp3', exact: true }).click();
+  await editSection(page, 4);
   await page.getByRole('group', { name: 'PPT 섹션 4 대체 PDF', exact: true }).getByRole('button', { name: 'welcome.pdf', exact: true }).click();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click(); await page.getByRole('button', { name: /04 새 찬양/ }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click(); await page.getByRole('button', { name: /04 새 찬양/ }).click();
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다'); await page.reload();
   await expect(page.getByRole('button', { name: /04 새 찬양/ })).toBeVisible(); await expect(page.getByRole('button', { name: '찬양 재생', exact: true })).toBeEnabled();
 });
@@ -94,11 +97,12 @@ test('unconfigured cloud APIs fail closed and foreign-origin mutations are rejec
   expect((await request.put('/api/manifest', { headers: { origin: 'https://attacker.example' }, data: {} })).status()).toBe(403);
 });
 test('a damaged PPTX can be replaced by its linked PDF without a server converter', async ({ page }) => {
-  await openConsole(page); await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await openConsole(page); await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles({ name: 'damaged.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer: Buffer.from('PK-damaged-not-a-real-zip') });
   await expect(page.getByRole('status')).toContainText('1개 파일');
+  await editSection(page, 4);
   await page.getByRole('group', { name: 'PPT 섹션 4 대체 PDF', exact: true }).getByRole('button', { name: '예배 안내.pdf', exact: true }).click();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click(); await page.getByRole('button', { name: /04 damaged/ }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click(); await page.getByRole('button', { name: /04 damaged/ }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'PDF를 연결한 뒤 전환할 수 있습니다.' })).toBeVisible();
   await page.getByRole('button', { name: 'PDF로 전환', exact: true }).click(); await expect(page.locator('.current-preview canvas')).toBeVisible();
   await page.reload(); await expect(page.locator('.current-preview canvas')).toBeVisible();

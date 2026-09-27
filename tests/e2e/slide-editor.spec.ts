@@ -89,10 +89,10 @@ test('grouped text and table cells remain editable with safe multiline text', as
   const zip = await JSZip.loadAsync(await pptx.write({ outputType: 'nodebuffer' }) as Buffer);
   const xml = await zip.file('ppt/slides/slide1.xml')!.async('string');
   zip.file('ppt/slides/slide1.xml', xml.replace(/<p:sp>.*?<\/p:sp>/s, shape => `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="100" name="Group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="12192000" cy="6858000"/><a:chOff x="0" y="0"/><a:chExt cx="12192000" cy="6858000"/></a:xfrm></p:grpSpPr>${shape}</p:grpSp>`));
-  await page.goto('/admin'); await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.goto('/admin'); await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles({ name: 'group-table.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
   await expect(page.getByRole('status')).toContainText('1개 파일');
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   await page.getByRole('button', { name: /group-table/ }).click();
   const current = page.getByRole('img', { name: '현재 슬라이드 미리보기' });
   await expect(current).toContainText('그룹 안의 문구');
@@ -121,10 +121,10 @@ test('admin save persists edit metadata without uploading the original file agai
   };
   await connect(page); await page.goto('/admin');
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
-  await page.getByRole('button', { name: '둘째 순서 PPT 섹션 변경', exact: true }).click();
-  await page.getByRole('group', { name: '둘째 순서 PPT 섹션', exact: true }).getByRole('button', { name: /^1\./ }).click();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
+  await page.getByRole('button', { name: '예배 순서 2 이동 메뉴', exact: true }).click();
+  await page.getByRole('group', { name: '둘째 순서 이동할 PPT 섹션', exact: true }).getByRole('button', { name: /^1\./ }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   await page.getByRole('button', { name: '슬라이드 편집', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '슬라이드 편집', exact: true });
   await dialog.locator('textarea').filter({ hasText: '우리 함께 예배합니다' }).fill('서버에서 불러온 새 문구');

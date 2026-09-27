@@ -1,16 +1,19 @@
 'use client';
 import { ChoiceButtons } from './ChoiceButtons';
+import { MaterialImport } from './MaterialImport';
+import { SectionEditor } from './SectionEditor';
 import { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, Music2, Plus, Trash2, Edit3, X } from 'lucide-react';
 import type { Manifest } from '@/lib/model';
 import { appendCard, moveCard, removeCard, sectionFileName, sectionName, withSections } from '@/lib/sections';
 
-export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, onChange }: {
+export function ServiceQueue({ manifest, selected, disabled, canEdit, editing, onEditingChange, onImport, onSelect, onChange }: {
   manifest: Manifest; selected?: string; disabled: boolean; canEdit: boolean; onSelect: (id: string) => void; onChange: (value: Manifest) => void;
+  editing: boolean; onEditingChange: (value: boolean) => void; onImport: (files: File[], sectionId?: string) => Promise<void>;
 }) {
   const value = withSections(manifest);
   const locked = disabled || !canEdit;
-  const [editing, setEditing] = useState(false);
+  const [sectionEditing, setSectionEditing] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
   const [menu, setMenu] = useState<string | null>(null); const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState(''); const [announcement, setAnnouncement] = useState('');
@@ -26,17 +29,19 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
     onChange(next); setAnnouncement('예배 순서 카드 위치를 변경했습니다.'); drag.current = null; pressed.current = null; setDragging(null); setOver('');
   };
   return <>
-    {canEdit && <button className="queue-edit-toggle" disabled={disabled} aria-pressed={editing} onClick={() => { setEditing(v => !v); setMenu(null); setRenaming(null); }}>{editing ? <X size={14} /> : <Edit3 size={14} />}{editing ? '편집 모드 종료' : '편집 모드'}</button>}
-    {canEdit && editing && <p className="queue-edit-help">연필 버튼으로 순서 이름을 수정할 수 있습니다. 카드나 빈 PPT 섹션을 삭제해도 원본 파일은 유지됩니다.</p>}
+    {canEdit && <button className="queue-edit-toggle" disabled={disabled} aria-pressed={editing} onClick={() => { onEditingChange(!editing); setSectionEditing(null); setMenu(null); setRenaming(null); }}>{editing ? <X size={14} /> : <Edit3 size={14} />}{editing ? '편집 모드 종료' : '편집 모드'}</button>}
     <nav className="service-queue grouped-queue" aria-label="곡 선택" onDragLeave={e => { if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setOver(''); }}>
+      {canEdit && editing && <div className="queue-library-tools"><label className="field-label">예배 이름<input aria-label="예배 이름" value={value.title} maxLength={100} disabled={locked} onChange={e => onChange({ ...value, title: e.target.value || '예배' })} /></label><MaterialImport label="예배 파일 불러오기" disabled={locked} onImport={files => onImport(files)} /><p className="queue-edit-help">섹션의 연필 버튼에서 이름과 자료를 변경하세요.</p></div>}
       {value.sections.map((section, sectionIndex) => <section key={section.id} data-section-id={section.id} className={`ppt-section ${over === section.id ? 'drop-section' : ''}`} aria-label={`PPT 섹션 ${sectionIndex + 1}: ${sectionName(value, section)}`}
         onDragOver={e => { if (drag.current && !locked) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(section.id); } }} onDrop={e => drop(e, section.id)}>
         <header className="ppt-section-heading"><div className="ppt-section-identity"><strong title={sectionName(value, section)}>{sectionName(value, section)}</strong><small>{section.itemIds.length}개 예배 순서</small></div>
           <span className="ppt-section-file" title={sectionFileName(value, section)}>{sectionFileName(value, section)}</span>
           <div className="ppt-section-actions">
           {canEdit && <button disabled={locked || value.items.length >= 100} aria-label={`PPT 섹션 ${sectionIndex + 1}에 순서 추가`} onClick={() => onChange(appendCard(value, { id: crypto.randomUUID(), title: '새 예배 순서' }, section.id))}><Plus size={15} /></button>}
+          {canEdit && editing && <button disabled={locked} aria-label={`PPT 섹션 ${sectionIndex + 1} 편집`} aria-expanded={sectionEditing === section.id} onClick={() => setSectionEditing(sectionEditing === section.id ? null : section.id)}><Edit3 size={14} /></button>}
           {canEdit && editing && section.itemIds.length === 0 && <button className="queue-delete" disabled={locked} aria-label={`PPT 섹션 ${sectionIndex + 1} 삭제`} onClick={() => { if (!locked && confirm(`‘${sectionName(value, section)}’ 빈 섹션을 삭제할까요? 섹션의 문구 편집은 사라지고 원본 파일은 유지됩니다.`)) { onChange({ ...value, sections: value.sections.filter(s => s.id !== section.id) }); setAnnouncement('빈 PPT 섹션을 삭제했습니다.'); } }}><Trash2 size={15} /></button>}
           </div></header>
+        {canEdit && editing && sectionEditing === section.id && <SectionEditor manifest={value} section={section} index={sectionIndex} disabled={locked} onChange={onChange} onImport={onImport} />}
         <div role="list" className="section-cards">{section.itemIds.map((id, index) => {
           const item = value.items.find(i => i.id === id)!; const number = value.items.indexOf(item) + 1;
           const fileIds = [section.presentationId, item.audioSource === 'youtube' ? undefined : item.audioId];

@@ -7,11 +7,11 @@ test.beforeEach(async ({ page }) => { await signIn(page.request); });
 async function connectYouTube(page: Page) {
   await page.goto('/admin');
   await page.getByRole('button', { name: /찬양 · 음향 리허설/ }).click();
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByRole('group', { name: '찬양 · 음향 리허설 재생 방식', exact: true }).getByRole('button', { name: '유튜브 링크 · 화면 1', exact: true }).click();
   await page.getByLabel('찬양 · 음향 리허설 유튜브 링크', { exact: true }).fill('https://youtu.be/M7lc1UVf-VE?t=12');
   await page.getByRole('button', { name: '링크 적용', exact: true }).click();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
 }
 
 test('inline links embed immediately; server save completes, changes enable saving, and failures can retry', async ({ page }) => {
@@ -129,10 +129,10 @@ test('errors explain recovery, editing pauses YouTube, and switching to MP3 remo
   await player.getByRole('button', { name: '다시 시도' }).click();
   await expect(player.locator('.youtube-status')).toHaveText(/재생 버튼을 눌러 주세요|일시정지/);
   await expect(player.getByRole('alert')).toHaveCount(0);
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { __ytLog: string[] }).__ytLog)).toContain('paused');
   await page.getByRole('group', { name: '찬양 · 음향 리허설 재생 방식', exact: true }).getByRole('button', { name: 'MP3 음원 파일', exact: true }).click();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   await expect(page.getByTitle('화면 1 유튜브 찬양 플레이어')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '찬양 재생', exact: true })).toBeEnabled();
 });

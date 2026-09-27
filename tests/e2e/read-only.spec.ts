@@ -1,3 +1,4 @@
+import { editSection } from '../helpers/queue';
 import { test, expect } from '@playwright/test';
 import { signIn } from '../helpers/admin';
 import { demoManifest } from '../../src/lib/model';
@@ -34,9 +35,9 @@ test('admin edit mode deletes cards and empty sections, preserves files and draf
   await expect(page.locator('.queue-delete')).toHaveCount(0);
   await page.reload(); await expect(page.locator('[data-card-id="welcome"]')).toHaveCount(0);
   // The original PPT and MP3 remain available in the editor after card/section deletion.
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await editSection(page, 1);
   await expect(page.getByRole('group', { name: 'PPT 섹션 1 파일', exact: true }).getByRole('button', { name: '예배 안내.pptx', exact: true })).toHaveCount(1);
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('button', { name: '편집 모드', exact: true })).toHaveCount(0);
@@ -52,8 +53,8 @@ test('session revocation closes an open editor and disables edits when the windo
   let authenticated = true;
   await page.route('**/api/config', r => r.fulfill({ json: { cloud: false, authenticated } }));
   await page.goto('/admin');
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
+  await expect(page.getByLabel('예배 파일 불러오기')).toBeVisible();
   authenticated = false;
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page).toHaveURL(/\/login$/);

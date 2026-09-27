@@ -7,13 +7,12 @@ import { YouTubePlayer } from './YouTubePlayer';
 import { YouTubeLinkField } from './YouTubeLinkField';
 import { SlideView } from './SlideView';
 import { SlideEditor } from './SlideEditor';
-import { LibraryEditor } from './LibraryEditor';
 import { ServerFiles } from './ServerFiles';
 import { demoManifest, emptyManifest, errorText, initialSnapshot, manifestSchema, slideIndex, slideKey, snapshotSchema, type Manifest, type ManifestEnvelope, type Snapshot } from '@/lib/model';
-import { clearLocalFiles, deleteLocalManifest, fileFor, jsonRequest, localManifest, prepareOffline, saveLocalManifest, uploadAsset } from '@/lib/client-storage';
+import { clearLocalFiles, deleteLocalManifest, fileFor, importFile, jsonRequest, localManifest, prepareOffline, saveLocalManifest, uploadAsset } from '@/lib/client-storage';
 import { rendererModules } from '@/lib/decks';
 import { chooseDownload, createMaterialArchive, saveDownload } from '@/lib/download';
-import { currentSection, patchSection, withSections } from '@/lib/sections';
+import { appendCard, currentSection, patchSection, withSections } from '@/lib/sections';
 import { ServiceQueue } from './ServiceQueue';
 import { ResizableWorkspace } from './ResizableWorkspace';
 import { SyncBus, type OutputStatus } from '@/lib/sync';
@@ -24,7 +23,7 @@ export function Console() {
   const [etag, setEtag] = useState<string | null>(null); const etagRef = useRef(etag); etagRef.current = etag; const [selected, setSelected] = useState('');
   const [state, setState] = useState<Snapshot>(initialSnapshot); const stateRef = useRef(state); stateRef.current = state;
   const [mode, setMode] = useState('local'); const [authenticated, setAuthenticated] = useState(false);
-  const [ready, setReady] = useState(false); const [editor, setEditor] = useState(false); const [usePdf, setUsePdf] = useState(false);
+  const [ready, setReady] = useState(false); const [queueEditing, setQueueEditing] = useState(false); const [usePdf, setUsePdf] = useState(false);
   const [serverFilesOpen, setServerFilesOpen] = useState(false);
   const canEdit = ready && authenticated;
   const [dirty, setDirty] = useState(false); const dirtyRef = useRef(false);
@@ -47,10 +46,34 @@ export function Console() {
   const [slideEditorOpen, setSlideEditorOpen] = useState(false);
   const [message, setMessage] = useState(''); const [renderError, setRenderError] = useState('');
   const [busy, setBusy] = useState(''); const [online, setOnline] = useState(true);
+  const importFiles = async (files: File[], sectionId?: string) => {
+    if (!canEdit || busy) return;
+    setBusy('자료 불러오기'); setMessage('');
+    let next = manifestRef.current; const errors: string[] = [];
+    try {
+      for (const file of files) {
+        try {
+          const imported = await importFile(file);
+          if (sectionId && imported.kind === 'mp3') throw new Error('섹션 자료에는 PPTX 또는 PDF를 지정해 주세요.');
+          const existing = next.assets.find(a => a.id === imported.id);
+          const asset = existing ?? imported;
+          const candidate = { ...next, assets: existing ? next.assets : [...next.assets, asset] };
+          if (sectionId) {
+            if (!withSections(candidate).sections.some(s => s.id === sectionId)) throw new Error('자료를 연결할 섹션을 찾을 수 없습니다.');
+            next = manifestSchema.parse(patchSection(candidate, sectionId, { presentationId: asset.id }));
+          } else if (!existing) {
+            next = manifestSchema.parse(appendCard(candidate, { id: crypto.randomUUID(), title: file.name.replace(/\.[^.]+$/, '').slice(0, 100), ...(asset.kind === 'mp3' ? { audioId: asset.id } : { presentationId: asset.id }) }));
+          }
+        } catch (error) { errors.push(`${file.name}: ${errorText(error)}`); }
+      }
+      applyEdit(next);
+      setMessage(errors.length ? errors.join(' / ') : `${files.length}개 파일을 확인했습니다.${sectionId ? ' 섹션 자료를 변경했습니다.' : ''}`);
+    } finally { setBusy(''); }
+  };
   const [screens, setScreens] = useState<DetailedScreen[]>([]); const [screen, setScreen] = useState<DetailedScreen | null>(null);
   const [screenSupported, setScreenSupported] = useState(false); const screenDetails = useRef<ScreenDetails | null>(null); const screenCleanup = useRef<() => void>(() => {});
   const [output, setOutput] = useState<(OutputStatus & { at: number }) | null>(null); const [opened, setOpened] = useState(false); const [now, setNow] = useState(0);
-  const editingRef = useRef(false); editingRef.current = editor || slideEditorOpen || !!busy;
+  const editingRef = useRef(false); editingRef.current = queueEditing || slideEditorOpen || !!busy;
   const session = useRef(''); const bus = useRef<SyncBus | null>(null); const outputWindow = useRef<Window | null>(null);
   const active = manifest.items.find(i => i.id === selected) ?? manifest.items[0];
   const range = currentSection(manifest, active?.id);
@@ -140,12 +163,12 @@ export function Console() {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const element = e.target as HTMLElement;
-      if (editor || serverFilesOpen || slideEditorOpen || element.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)) return;
+      if (queueEditing || serverFilesOpen || slideEditorOpen || element.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)) return;
       if (e.key === ' ' && element.tagName === 'BUTTON') return;
       if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) { e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : 1); }
       if (e.key.toLowerCase() === 'b') change({ blackout: !stateRef.current.blackout });
     }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  }, [editor, serverFilesOpen, slideEditorOpen, navigate, change]);
+  }, [queueEditing, serverFilesOpen, slideEditorOpen, navigate, change]);
   useEffect(() => {
     if (!ready || mode !== 'cloud') return;
     let cancelled = false; let running = false;
@@ -273,10 +296,9 @@ export function Console() {
   const statusText = !opened ? '출력창 닫힘' : !live ? output ? '출력창 연결 끊김' : '연결 확인 중' : !rendered ? '슬라이드 준비 중' : output.fullscreen ? '전체화면 출력 중' : '창 모드 연결됨';
   return <ResizableWorkspace sidebar={
     <aside id="worship-sidebar" className="sidebar"><div className="sidebar-header"><a className="brand" href="/admin"><span className="brand-mark"><Church size={22} /></span><div>아름다운교회 영아부<small>BEAUTIFUL CHURCH · INFANT MINISTRY</small></div></a>{mode === 'cloud' && canEdit && <button className="server-files-trigger" aria-label="서버 파일 목록" title="서버 파일 목록" disabled={!online} onClick={() => setServerFilesOpen(true)}><Cloud size={16} /></button>}</div>
-      <div className="queue-title"><span>예배 순서</span><span>{manifest.items.length}</span>{canEdit && <button aria-label="예배 순서 추가" disabled={!!busy} onClick={() => setEditor(true)}><Plus size={17} /></button>}</div>
-      <ServiceQueue manifest={manifest} selected={active?.id} disabled={!!busy || !ready} canEdit={canEdit} onSelect={selectItem} onChange={editManifest} />
-      {canEdit && <button className="edit-queue" disabled={!!busy || !ready} onClick={() => setEditor(true)}><Edit3 size={16} />예배 순서 · 자료 편집</button>}
-      {canEdit && <div className="sidebar-admin-actions" role="group" aria-label="관리자 저장 및 계정"><button className="primary" disabled={mode !== 'cloud' || !dirty || !!busy || !online} aria-busy={savingCloud} onClick={saveCloud}>{cloudSaved && !dirty ? <Check size={14} /> : <Cloud size={14} />}{savingCloud ? '저장 중…' : cloudSaved && !dirty ? '저장완료' : '서버 저장'}</button><button aria-label="서버 자료 다시 불러오기" disabled={mode !== 'cloud' || !!busy || !online} onClick={reloadCloud}><RefreshCw size={16} /></button><button className="sidebar-logout" onClick={async () => { await draftWrites.current; await jsonRequest('/api/logout', { method: 'POST' }); setAuthenticated(false); setEditor(false); setSlideEditorOpen(false); bus.current?.send({ type: 'command', command: 'close' }); outputWindow.current?.close(); try { localStorage.setItem('worship-logout', String(Date.now())); } catch { /* The server session is already cleared. */ } location.replace('/login'); }}>로그아웃</button></div>}
+      <div className="queue-title"><span>예배 순서</span><span>{manifest.items.length}</span>{canEdit && <button aria-label="예배 순서 추가" disabled={!!busy || !ready || manifest.items.length >= 100} onClick={() => editManifest(appendCard(manifest, { id: crypto.randomUUID(), title: '새 예배 순서' }, withSections(manifest).sections.at(-1)?.id))}><Plus size={17} /></button>}</div>
+      <ServiceQueue manifest={manifest} selected={active?.id} disabled={!!busy || !ready} canEdit={canEdit} editing={queueEditing} onEditingChange={setQueueEditing} onImport={importFiles} onSelect={selectItem} onChange={editManifest} />
+      {canEdit && <div className="sidebar-admin-actions" role="group" aria-label="관리자 저장 및 계정"><button className="primary" disabled={mode !== 'cloud' || !dirty || !!busy || !online} aria-busy={savingCloud} onClick={saveCloud}>{cloudSaved && !dirty ? <Check size={14} /> : <Cloud size={14} />}{savingCloud ? '저장 중…' : cloudSaved && !dirty ? '저장완료' : '서버 저장'}</button><button aria-label="서버 자료 다시 불러오기" disabled={mode !== 'cloud' || !!busy || !online} onClick={reloadCloud}><RefreshCw size={16} /></button><button className="sidebar-logout" onClick={async () => { await draftWrites.current; await jsonRequest('/api/logout', { method: 'POST' }); setAuthenticated(false); setQueueEditing(false); setSlideEditorOpen(false); bus.current?.send({ type: 'command', command: 'close' }); outputWindow.current?.close(); try { localStorage.setItem('worship-logout', String(Date.now())); } catch { /* The server session is already cleared. */ } location.replace('/login'); }}>로그아웃</button></div>}
     </aside>}>
     <main className="console-main"><header className="topbar"><div className="topbar-heading"><div className="console-title"><span className="eyebrow">WORSHIP CONTROL</span><h1>예배 운영 콘솔</h1><p>찬양과 말씀에 집중할 수 있도록, 한 화면에서.</p></div><div className="service-summary"><span className="eyebrow">TODAY’S SERVICE</span><h2>{manifest.title}</h2><p>{now ? new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' }).format(now) : '오늘의 예배'}</p></div></div><div className="header-actions"><button onClick={prepare} disabled={!!busy || !ready}><Download size={17} />{busy || '예배 자료 다운로드'}</button><button className="primary" disabled={!ready} onClick={launch}><MonitorUp size={18} />출력창 열기</button></div></header>
       <div className="connection-bar"><span className={`connection-indicator ${rendered ? 'connected' : ''}`} /><strong>{statusText}</strong><span className="connection-detail">{screen?.label || '출력창을 원하는 모니터로 이동하세요'}</span>{live && <span className="badge">{output?.visible ? '화면 표시 중' : '창 숨김'}</span>}<span className="connection-spacer" /><button className="text-button" disabled={!screenSupported} onClick={connectScreens}><Monitor size={15} />{screenSupported ? '두 번째 화면 자동 선택' : '수동 모니터 이동'}</button>{screens.length > 0 && <ChoiceButtons className="monitor-choices" label="출력 모니터 선택" value={String(screen ? screens.indexOf(screen) : -1)} onChange={id => setScreen(screens[Number(id)] ?? null)} options={[{ value: '-1', label: '수동으로 이동' }, ...screens.map((s, i) => ({ value: String(i), label: `${s.label || `화면 ${i + 1}`} · ${s.width} × ${s.height}` }))]} />}</div>
@@ -288,12 +310,13 @@ export function Console() {
       <div className="next-preview"><div className="preview-title"><span>다음 슬라이드</span><span>NEXT</span></div>{state.asset && state.count > 0 && state.slide + 1 < state.count ? <SlideView asset={state.asset} edit={state.presentationEdit} index={state.slide + 1} label="다음 슬라이드 미리보기" /> : <div className="end-preview"><Check size={26} /><span>{state.count ? '마지막 슬라이드입니다' : '슬라이드를 준비해 주세요'}</span></div>}<div className="next-tip"><ArrowRight size={16} /><p>다음 장을 미리 확인하고<br />차분하게 예배를 이어가세요.</p></div></div></section>
       {(renderError || output?.error) && <div className="notice warning" role="alert">{renderError || output?.error} {asset?.kind === 'pptx' && 'PDF를 연결한 뒤 전환할 수 있습니다.'}</div>}
       <section className="presentation-controls"><div className="slide-navigation"><button aria-label="이전 슬라이드" disabled={!state.count || state.slide === 0} onClick={() => navigate(-1)}><ArrowLeft size={18} />이전</button><span className="slide-counter"><strong>{state.count ? String(state.slide + 1).padStart(2, '0') : '—'}</strong><span>/ {String(state.count).padStart(2, '0')}</span></span><button aria-label="다음 슬라이드" disabled={!state.count || state.slide >= state.count - 1} onClick={() => navigate(1)}>다음<ArrowRight size={18} /></button></div><div className="output-actions"><button className={state.blackout ? 'active-toggle' : ''} onClick={() => change({ blackout: !state.blackout })}><Moon size={17} />{state.blackout ? '가림 해제' : '화면 가리기'}</button><button disabled={!opened} onClick={fullscreen}><Maximize2 size={17} />전체화면 요청</button><button title="출력창 전체화면 해제" aria-label="출력창 전체화면 해제" disabled={!output?.fullscreen} onClick={() => bus.current?.send({ type: 'command', command: 'exit-fullscreen' })}><Monitor size={17} /></button><button aria-label="출력창 닫기" disabled={!opened} onClick={() => { bus.current?.send({ type: 'command', command: 'close' }); outputWindow.current?.close(); setOpened(false); setOutput(null); }}><X size={17} /></button></div></section>
-      {canEdit && active && !editor && <section className="inline-audio-editor" aria-label="선택한 예배 순서 음원 편집">
+      {canEdit && active && <section className="inline-audio-editor" aria-label="선택한 예배 순서 음원 편집">
         <ChoiceButtons className="audio-source-field" label="찬양 재생 방식" ariaLabel={`${active.title} 재생 방식`} disabled={!!busy} value={active.audioSource ?? 'mp3'} onChange={source => editManifest({ ...manifest, items: manifest.items.map(item => item.id === active.id ? { ...item, audioSource: source as 'mp3' | 'youtube' } : item) })} options={[{ value: 'mp3', label: 'MP3 음원 파일' }, { value: 'youtube', label: '유튜브 링크 · 화면 1' }]} />
+        {active.audioSource !== 'youtube' && <ChoiceButtons label="찬양 MP3" ariaLabel={`${active.title} 찬양 MP3`} value={active.audioId ?? ''} disabled={!!busy} onChange={id => editManifest({ ...manifest, items: manifest.items.map(item => item.id === active.id ? { ...item, audioId: id || undefined } : item) })} options={[{ value: '', label: '연결하지 않음' }, ...manifest.assets.filter(a => a.kind === 'mp3').map(a => ({ value: a.id, label: a.name }))]} />}
         {active.audioSource === 'youtube' && <YouTubeLinkField key={active.id} title={active.title} track={active.youtube} disabled={!!busy} onChange={youtube => editManifest({ ...manifest, items: manifest.items.map(item => item.id === active.id ? { ...item, youtube } : item) })} />}
       </section>}
       {active?.audioSource === 'youtube'
-        ? <YouTubePlayer key={active.id} track={active.youtube} title={active.title} suspended={editor || serverFilesOpen || slideEditorOpen} />
+        ? <YouTubePlayer key={active.id} track={active.youtube} title={active.title} suspended={queueEditing || serverFilesOpen || slideEditorOpen} />
         : <AudioPlayer key={active?.id ?? 'empty'} asset={audio} title={active?.title ?? '찬양'} />}
       <footer className="console-footer"><span><kbd>←</kbd><kbd>→</kbd> 슬라이드 이동 <kbd>Space</kbd> 다음 <kbd>B</kbd> 화면 가리기</span>{canEdit && <button className="text-button" disabled={!!busy || opened} onClick={async () => { if (!confirm('이 PC의 오프라인 자료와 편집 내용을 모두 삭제할까요? 서버 자료는 유지됩니다.')) return; try { await clearLocalFiles(); sessionStorage.removeItem('worship-state'); sessionStorage.removeItem('worship-selected'); location.reload(); } catch (e) { setMessage(errorText(e)); } }}>이 PC 저장 자료 지우기</button>}</footer>
     </main>
@@ -305,6 +328,5 @@ export function Console() {
       applyEdit(parsed.data); change({ presentationEdit: edit, slide: index, count: edit.slides.length }); setMessage('슬라이드 편집을 화면에 적용했습니다. 이 PC에 자동 저장되며, 서버 반영은 ‘서버 저장’을 눌러 주세요.');
     }} />}
     {canEdit && serverFilesOpen && <ServerFiles onClose={() => setServerFilesOpen(false)} />}
-    {canEdit && editor && <LibraryEditor manifest={manifest} onChange={editManifest} onClose={() => setEditor(false)} />}
   </ResizableWorkspace>;
 }

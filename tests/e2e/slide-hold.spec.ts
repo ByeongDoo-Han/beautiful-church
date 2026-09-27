@@ -1,3 +1,4 @@
+import { editSection } from '../helpers/queue';
 import { signIn } from '../helpers/admin';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
@@ -49,7 +50,7 @@ test('drag cards between PPT sections and reorder them while preserving page and
   await expect(source.locator('header')).toContainText('3개 예배 순서');
   await page.getByRole('button', { name: /함께 드리는 기도/ }).click();
   await expect(current).toContainText('찬양으로 마음을 모읍니다'); await expect(live).toContainText('찬양으로 마음을 모읍니다');
-  await page.getByRole('button', { name: /찬양 · 음향 리허설/ }).click();
+  await page.locator('[data-card-id="praise"] .queue-item').click();
   await page.getByRole('button', { name: '찬양 재생', exact: true }).click();
   await expect(page.getByRole('button', { name: '찬양 일시정지', exact: true })).toBeVisible();
   await dragCard(page, page.locator('[data-card-id="praise"]'), page.locator('[data-card-id="welcome"]'));
@@ -76,7 +77,7 @@ test('section edits survive moving the original first card; empty sections accep
   await page.goto('/admin');
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
   await dragCard(page, page.locator('[data-card-id="praise"]'), page.locator('[data-section-id="welcome"] .section-drop-end'));
-  await page.getByRole('button', { name: /찬양 · 음향 리허설/ }).click();
+  await page.locator('[data-card-id="praise"] .queue-item').click();
   await page.getByRole('button', { name: '슬라이드 편집', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '슬라이드 편집', exact: true });
   await expect(dialog).toContainText('2개 순서에 적용');
@@ -106,8 +107,9 @@ test('legacy hold ranges migrate to sections and can be saved without losing car
   await expect(page.locator('.ppt-section [data-card-id]')).toHaveCount(3);
   await page.getByRole('button', { name: /함께 드리는 기도/ }).click();
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('우리 함께 예배합니다');
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await editSection(page, 1);
   await expect(page.getByRole('group', { name: 'PPT 섹션 1 파일', exact: true }).getByRole('button', { name: '예배 안내.pptx', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('group', { name: 'PPT 섹션 1 대체 PDF', exact: true }).getByRole('button', { name: '예배 안내.pdf', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('[data-card-id="praise"] .queue-item').click();
   await expect(page.getByRole('group', { name: '찬양 · 음향 리허설 찬양 MP3', exact: true }).getByRole('button', { name: '재생 테스트 음원.mp3', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });

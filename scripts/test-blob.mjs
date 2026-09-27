@@ -70,10 +70,10 @@ try {
   assert.equal((await page.request.get(`${baseURL}/api/files`)).status(), 401);
   await login(page);
   console.log('PASS: operator account login, public manifest read and anonymous file-list rejection');
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles(fixtures.map(f => `public/demo/${f.name}`));
   await page.getByRole('status').filter({ hasText: '2개 파일' }).waitFor();
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   const saveResponse = page.waitForResponse(r => r.url().endsWith('/api/manifest') && r.request().method() === 'PUT', { timeout: 90000 });
   uploaded = true;
   await page.getByRole('button', { name: '서버 저장', exact: true }).click();

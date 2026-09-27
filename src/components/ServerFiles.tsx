@@ -36,7 +36,7 @@ export function ServerFiles({ onClose }: { onClose: () => void }) {
     <div className="server-files-toolbar"><span>{loaded ? `${files.length}개${nextCursor ? ' 불러옴' : ' 파일'} · ${formatFileSize(files.reduce((sum, file) => sum + file.size, 0))}` : '파일 목록 확인'}</span><button disabled={busy} onClick={() => void load()}><RefreshCw size={15} />새로고침</button></div>
     {error && <p className="notice warning" role="alert">{error} 다시 연결한 후 새로고침해 주세요.</p>}
     {busy && <p className="muted" role="status">서버 파일을 불러오고 있습니다…</p>}
-    {loaded && !busy && !error && files.length === 0 && <div className="server-files-empty"><Cloud size={30} /><strong>서버에 저장된 파일이 없습니다.</strong><p>‘예배 순서 · 자료 편집’에서 파일을 불러온 뒤 ‘서버 저장’을 눌러 주세요.</p></div>}
+    {loaded && !busy && !error && files.length === 0 && <div className="server-files-empty"><Cloud size={30} /><strong>서버에 저장된 파일이 없습니다.</strong><p>‘편집 모드’에서 파일을 불러온 뒤 ‘서버 저장’을 눌러 주세요.</p></div>}
     {files.length > 0 && <div className="server-files-table-wrap"><table className="server-files-table"><caption className="sr-only">서버에 저장된 예배 파일</caption><thead><tr><th scope="col">파일명</th><th scope="col">용량</th><th scope="col">업로드 일시</th></tr></thead><tbody>{files.map(file => <tr key={file.pathname}>
       <th scope="row"><div className="server-file-name">{file.kind === 'mp3' ? <Music2 size={18} /> : ['pptx', 'pdf'].includes(file.kind) ? <Presentation size={18} /> : <File size={18} />}<div><span>{file.name}</span><small>{file.kind.toUpperCase()} · {file.registered ? '예배 목록에 등록' : '파일만 저장됨'}</small></div></div></th>
       <td>{formatFileSize(file.size)}</td><td><time dateTime={file.uploadedAt}>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(file.uploadedAt))}</time></td>

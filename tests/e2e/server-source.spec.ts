@@ -1,3 +1,4 @@
+import { renameCard } from '../helpers/queue';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -128,12 +129,12 @@ test('unsaved edits stay separate from offline/server views, then saving makes t
   await expect(page.locator('[data-card-id="first"] .queue-copy strong')).toHaveText('동기화된 첫 순서');
   await expect(page.locator('[data-card-id="first"] .queue-file-name')).toHaveText('welcome.pptx');
   await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 이름', { exact: true }).fill('동기화된 예배 이름');
-  await expect(page.getByLabel('항목 1 제목', { exact: true })).toHaveValue('동기화된 첫 순서');
-  await page.getByRole('button', { name: '빈 순서 추가', exact: true }).click();
-  await page.getByLabel('항목 2 제목', { exact: true }).fill('함께 저장한 두 번째 순서');
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await expect(page.locator('.queue-copy strong').first()).toHaveText('동기화된 첫 순서');
+  await page.getByRole('button', { name: '예배 순서 추가', exact: true }).click();
+  await renameCard(page, '새 예배 순서', '함께 저장한 두 번째 순서');
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   const guestContext = await browser.newContext();
   try {
     const guest = await guestContext.newPage(); await signIn(guest.request); await connect(guest, true); await guest.goto(`${baseURL}/admin`);

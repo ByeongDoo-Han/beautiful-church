@@ -10,10 +10,10 @@ try {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await startLocalAdminDraft(page, base);
   await page.goto(`${base}/admin`);
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles('public/demo/welcome.pptx');
   await expect(page.getByRole('status')).toContainText('1개 파일');
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   const current = page.getByRole('img', { name: '현재 슬라이드 미리보기' });
   await expect(current).toContainText('우리 함께 예배합니다');
   const popup = page.waitForEvent('popup');

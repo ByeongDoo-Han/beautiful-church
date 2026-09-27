@@ -18,18 +18,23 @@ try {
   const page = await context.newPage(); const errors = []; page.on('pageerror', e => errors.push(e.message));
   await startLocalAdminDraft(page, base);
   await page.goto(`${base}/admin`);
-  await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+  await page.getByRole('button', { name: '편집 모드', exact: true }).click();
   await page.getByLabel('예배 파일 불러오기').setInputFiles('public/demo/welcome.pptx');
   await expect(page.getByRole('status')).toContainText('1개 파일');
-  await page.getByLabel('항목 1 제목', { exact: true }).fill('예배로의 초대');
+  const rename = async (number, title) => {
+    await page.locator('[data-card-id]').nth(number - 1).locator('.queue-rename').click();
+    await page.getByRole('textbox', { name: '예배 순서 이름', exact: true }).fill(title);
+    await page.getByRole('button', { name: '이름 적용', exact: true }).click();
+  };
+  await rename(1, '예배로의 초대');
   for (const [index, title] of ['기도', '성경 봉독'].entries()) {
-    await page.getByRole('button', { name: '빈 순서 추가', exact: true }).click();
-    await page.getByLabel(`항목 ${index + 2} 제목`, { exact: true }).fill(title);
+    await page.getByRole('button', { name: '예배 순서 추가', exact: true }).click();
+    await rename(index + 2, title);
   }
   await page.getByLabel('예배 파일 불러오기').setInputFiles('public/demo/welcome.pdf');
-  await expect(page.getByLabel('항목 4 제목', { exact: true })).toBeVisible();
-  await page.getByLabel('항목 4 제목', { exact: true }).fill('설교');
-  await page.getByRole('button', { name: '편집 완료', exact: true }).click();
+  await expect(page.locator('.queue-card')).toHaveCount(4);
+  await rename(4, '설교');
+  await page.getByRole('button', { name: '편집 모드 종료', exact: true }).click();
   const source = page.locator('.ppt-section').first(); const target = page.locator('.ppt-section').last();
   const card = source.locator('[data-card-id]').nth(1); const id = await card.getAttribute('data-card-id');
   const moving = page.locator(`[data-card-id="${id}"]`);
