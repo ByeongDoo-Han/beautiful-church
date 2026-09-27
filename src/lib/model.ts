@@ -31,7 +31,7 @@ export const itemSchema = z.object({
   slideHoldCount: z.number().int().min(1).max(100).optional(),
 });
 export const sectionSchema = z.object({
-  id, presentationId: id.optional(), fallbackPdfId: id.optional(),
+  id, title: z.string().min(1).max(100).optional(), presentationId: id.optional(), fallbackPdfId: id.optional(),
   presentationEdit: presentationEditSchema.optional(), itemIds: z.array(id).max(100),
 });
 export type PresentationSection = z.infer<typeof sectionSchema>;

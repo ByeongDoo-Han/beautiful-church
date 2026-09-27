@@ -15,6 +15,9 @@ export function withSections(manifest: Manifest): Manifest & { sections: Present
   return { ...manifest, sections };
 }
 export function sectionName(manifest: Manifest, section: PresentationSection) {
+  return section.title?.trim() || `PPT 섹션 ${withSections(manifest).sections.findIndex(s => s.id === section.id) + 1}`;
+}
+export function sectionFileName(manifest: Manifest, section: PresentationSection) {
   return manifest.assets.find(a => a.id === section.presentationId)?.name ?? '자료 미지정';
 }
 export function currentSection(manifest: Manifest, selectedId?: string) {

@@ -3,6 +3,32 @@ import { test, expect } from '@playwright/test';
 import { signIn } from '../helpers/admin';
 
 for (const viewport of [{ width: 1512, height: 982 }, { width: 390, height: 844 }]) {
+  test(`section creation is immediate and names stay separate from files at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await signIn(page.request);
+    await page.goto('/admin');
+    await expect(page.locator('.ppt-section')).toHaveCount(3);
+    await page.getByRole('button', { name: 'PPT 섹션 추가', exact: true }).click();
+    await expect(page.locator('.ppt-section')).toHaveCount(4);
+    const added = page.locator('.ppt-section').last();
+    await expect(added.locator('.ppt-section-identity strong')).toHaveText('PPT 섹션 4');
+    await expect(added.locator('.ppt-section-file')).toHaveText('자료 미지정');
+    await expect(added.locator('.queue-card')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '섹션 만들기', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '예배 순서 · 자료 편집', exact: true }).click();
+    await page.getByRole('textbox', { name: 'PPT 섹션 4 이름', exact: true }).fill('찬양 시간');
+    await page.getByRole('group', { name: 'PPT 섹션 4 파일', exact: true }).getByRole('button', { name: '예배 안내.pptx', exact: true }).click();
+    await page.getByRole('button', { name: '편집 닫기', exact: true }).click();
+    await page.reload();
+    await expect(added.locator('.ppt-section-identity strong')).toHaveText('찬양 시간');
+    await expect(added.locator('.ppt-section-file')).toHaveText('예배 안내.pptx');
+    await added.scrollIntoViewIfNeeded();
+    const name = (await added.locator('.ppt-section-identity').boundingBox())!;
+    const file = (await added.locator('.ppt-section-file').boundingBox())!;
+    expect(file.x).toBeGreaterThanOrEqual(name.x + name.width);
+    expect(await added.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: `artifacts/section-names-${viewport.width}.png` });
+  });
   test(`library close stays visible and adding cards keeps section count at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await signIn(page.request);
@@ -22,7 +48,7 @@ for (const viewport of [{ width: 1512, height: 982 }, { width: 390, height: 844 
     await prayer.getByRole('button', { name: '함께 드리는 기도 PPT 섹션 변경', exact: true }).click();
     await expect(dialog.locator('.card-section-picker button')).toHaveCount(3);
     await prayer.getByRole('group', { name: '함께 드리는 기도 PPT 섹션', exact: true }).getByRole('button', { name: /^1\./ }).click();
-    await expect(dialog.locator('.card-section-summary').filter({ hasText: '1. 예배 안내.pptx' })).toHaveCount(3);
+    await expect(dialog.locator('.card-section-summary').filter({ hasText: '1. PPT 섹션 1' })).toHaveCount(3);
     await dialog.getByRole('button', { name: '예배로의 초대 PPT 섹션 변경', exact: true }).click();
     await expect(dialog.locator('.card-section-picker button')).toHaveCount(3);
     await expect(dialog.getByRole('button', { name: '함께 드리는 기도 PPT 섹션 변경', exact: true })).toHaveAttribute('aria-expanded', 'false');

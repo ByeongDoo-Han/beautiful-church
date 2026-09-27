@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { demoManifest, manifestSchema, type Manifest } from '../../src/lib/model';
-import { appendCard, currentSection, moveCard, moveSection, patchSection, removeCard, withSections } from '../../src/lib/sections';
+import { appendCard, currentSection, moveCard, moveSection, patchSection, removeCard, sectionName, sectionFileName, withSections } from '../../src/lib/sections';
 import { createPresentationEdit } from '../../src/lib/slide-edit';
 
 describe('PPT sections', () => {
+  it('persists a section name separately from its file and slide edits', () => {
+    const base = withSections(demoManifest);
+    expect(sectionName(base, base.sections[0])).toBe('PPT 섹션 1');
+    const edit = createPresentationEdit('demo-pptx', 3);
+    const named = manifestSchema.parse(patchSection(base, 'welcome', { title: '찬양', presentationEdit: edit }));
+    const moved = moveSection(named, 'welcome', 1);
+    const section = moved.sections![1];
+    expect(sectionName(moved, section)).toBe('찬양');
+    expect(sectionFileName(moved, section)).toBe('예배 안내.pptx');
+    expect(section.presentationEdit).toEqual(edit);
+    expect(section.itemIds).toEqual(['welcome']);
+  });
   it('adds blank and audio cards without multiplying sections or losing presentation edits', () => {
     const edit = createPresentationEdit('demo-pptx', 3);
     const base: Manifest = { ...demoManifest, sections: [{ id: 'service', presentationId: 'demo-pptx', presentationEdit: edit, itemIds: demoManifest.items.map(i => i.id) }] };

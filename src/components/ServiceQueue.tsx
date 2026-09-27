@@ -1,9 +1,9 @@
 'use client';
 import { ChoiceButtons } from './ChoiceButtons';
 import { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, GripVertical, Music2, Plus, Presentation, Trash2, Edit3, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, GripVertical, Music2, Plus, Trash2, Edit3, X } from 'lucide-react';
 import type { Manifest } from '@/lib/model';
-import { appendCard, moveCard, removeCard, sectionName, withSections } from '@/lib/sections';
+import { appendCard, moveCard, removeCard, sectionFileName, sectionName, withSections } from '@/lib/sections';
 
 export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, onChange }: {
   manifest: Manifest; selected?: string; disabled: boolean; canEdit: boolean; onSelect: (id: string) => void; onChange: (value: Manifest) => void;
@@ -12,7 +12,6 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
   const locked = disabled || !canEdit;
   const [editing, setEditing] = useState(false);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
-  const [adding, setAdding] = useState(false); const [file, setFile] = useState('');
   const [menu, setMenu] = useState<string | null>(null); const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState(''); const [announcement, setAnnouncement] = useState('');
   const drag = useRef<string | null>(null);
@@ -32,10 +31,12 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
     <nav className="service-queue grouped-queue" aria-label="곡 선택" onDragLeave={e => { if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setOver(''); }}>
       {value.sections.map((section, sectionIndex) => <section key={section.id} data-section-id={section.id} className={`ppt-section ${over === section.id ? 'drop-section' : ''}`} aria-label={`PPT 섹션 ${sectionIndex + 1}: ${sectionName(value, section)}`}
         onDragOver={e => { if (drag.current && !locked) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(section.id); } }} onDrop={e => drop(e, section.id)}>
-        <header className="ppt-section-heading"><Presentation size={16} /><div><strong title={sectionName(value, section)}>{sectionName(value, section)}</strong><small>{section.itemIds.length}개 예배 순서</small></div>
+        <header className="ppt-section-heading"><div className="ppt-section-identity"><strong title={sectionName(value, section)}>{sectionName(value, section)}</strong><small>{section.itemIds.length}개 예배 순서</small></div>
+          <span className="ppt-section-file" title={sectionFileName(value, section)}>{sectionFileName(value, section)}</span>
+          <div className="ppt-section-actions">
           {canEdit && <button disabled={locked || value.items.length >= 100} aria-label={`PPT 섹션 ${sectionIndex + 1}에 순서 추가`} onClick={() => onChange(appendCard(value, { id: crypto.randomUUID(), title: '새 예배 순서' }, section.id))}><Plus size={15} /></button>}
           {canEdit && editing && section.itemIds.length === 0 && <button className="queue-delete" disabled={locked} aria-label={`PPT 섹션 ${sectionIndex + 1} 삭제`} onClick={() => { if (!locked && confirm(`‘${sectionName(value, section)}’ 빈 섹션을 삭제할까요? 섹션의 문구 편집은 사라지고 원본 파일은 유지됩니다.`)) { onChange({ ...value, sections: value.sections.filter(s => s.id !== section.id) }); setAnnouncement('빈 PPT 섹션을 삭제했습니다.'); } }}><Trash2 size={15} /></button>}
-        </header>
+          </div></header>
         <div role="list" className="section-cards">{section.itemIds.map((id, index) => {
           const item = value.items.find(i => i.id === id)!; const number = value.items.indexOf(item) + 1;
           const fileIds = [section.presentationId, item.audioSource === 'youtube' ? undefined : item.audioId];
@@ -67,8 +68,7 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, onSelect, 
         {canEdit && <div className={`section-drop-end ${section.itemIds.length ? '' : 'empty'}`}>{!section.itemIds.length && '예배 순서 카드를 여기로 끌어오세요'}</div>}
       </section>)}
     </nav>
-    {canEdit && <button className="add-ppt-section" disabled={disabled || value.sections.length >= 100} onClick={() => setAdding(v => !v)}><Plus size={14} />PPT 섹션 추가</button>}
-    {canEdit && adding && <div className="add-section-form"><ChoiceButtons label="새 PPT 섹션 파일" value={file} disabled={disabled} onChange={setFile} options={[{ value: '', label: '자료 미지정' }, ...value.assets.filter(a => a.kind !== 'mp3').map(a => ({ value: a.id, label: a.name }))]} /><button disabled={disabled || value.sections.length >= 100} onClick={() => { onChange({ ...value, sections: [...value.sections, { id: crypto.randomUUID(), presentationId: file || undefined, itemIds: [] }] }); setAdding(false); setFile(''); }}>섹션 만들기</button></div>}
+    {canEdit && <button className="add-ppt-section" disabled={disabled || value.sections.length >= 100} onClick={() => { if (locked || value.sections.length >= 100) return; onChange({ ...value, sections: [...value.sections, { id: crypto.randomUUID(), itemIds: [] }] }); setAnnouncement('자료 미지정 PPT 섹션을 추가했습니다.'); }}><Plus size={14} />PPT 섹션 추가</button>}
     <span className="sr-only" aria-live="polite">{announcement}</span>
   </>;
 }

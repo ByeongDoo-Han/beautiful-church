@@ -85,7 +85,6 @@ test('section edits survive moving the original first card; empty sections accep
   await dragCard(page, page.locator('[data-card-id="welcome"]'), page.locator('[data-section-id="prayer"] .section-drop-end'));
   await expect(page.getByRole('img', { name: '현재 슬라이드 미리보기' })).toContainText('PPT 섹션에 보존한 문구');
   await page.getByRole('button', { name: 'PPT 섹션 추가', exact: true }).click();
-  await page.getByRole('group', { name: '새 PPT 섹션 파일', exact: true }).getByRole('button', { name: '예배 안내.pptx', exact: true }).click(); await page.getByRole('button', { name: '섹션 만들기', exact: true }).click();
   const empty = page.locator('.ppt-section').last(); await expect(empty).toContainText('0개 예배 순서');
   await dragCard(page, page.locator('[data-card-id="prayer"]'), empty.locator('.section-drop-end'));
   await expect(empty.locator('[data-card-id="prayer"]')).toBeVisible();
