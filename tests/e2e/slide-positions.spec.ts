@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { manifestSchema, type Manifest } from '../../src/lib/model';
 import { signIn } from '../helpers/admin';
 
-test('each card remembers its page across navigation, output controls, save, reload and a fresh device', async ({ page, browser, baseURL }) => {
+test('each card remembers its page across keyboard selection, output controls, save, reload and a fresh device', async ({ page, browser, baseURL }) => {
   const bytes = await readFile('public/demo/welcome.pptx');
   const id = createHash('sha256').update(bytes).digest('hex');
   let saved: Manifest = {
@@ -12,7 +12,7 @@ test('each card remembers its page across navigation, output controls, save, rel
     assets: [{ id, name: 'welcome.pptx', kind: 'pptx', size: bytes.length, pathname: `media/${id}.pptx` }],
     // Identical titles must still select independent pages by card ID.
     items: ['first', 'second', 'third'].map(id => ({ id, title: '예배 순서' })),
-    sections: [{ id: 'shared', presentationId: id, itemIds: ['first', 'second', 'third'] }],
+    sections: [{ id: 'shared', presentationId: id, itemIds: ['first', 'second'] }, { id: 'empty', itemIds: [] }, { id: 'last', presentationId: id, itemIds: ['third'] }],
   };
   let puts = 0;
   const connect = async (target: Page) => {
@@ -44,8 +44,24 @@ test('each card remembers its page across navigation, output controls, save, rel
   await expect(live).toContainText('함께 기도합니다');
   await select(page, 'first'); await expect(counter).toHaveText('02/ 03');
   await expect(live).toContainText('찬양으로 마음을 모읍니다');
-  await select(page, 'third'); await expect(counter).toHaveText('01/ 03');
-  await select(page, 'second'); await expect(counter).toHaveText('03/ 03');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-card-id="first"] .queue-item')).toBeFocused();
+  await expect(counter).toHaveText('02/ 03');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-card-id="second"] .queue-item')).toBeFocused();
+  await expect(page.locator('[data-card-id="second"] .queue-item')).toHaveAttribute('aria-current', 'step');
+  await expect(counter).toHaveText('03/ 03');
+  await expect(live).toContainText('함께 기도합니다');
+  // Continue across a section boundary and skip an empty section.
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-card-id="third"] .queue-item')).toBeFocused();
+  await expect(counter).toHaveText('01/ 03');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('[data-card-id="third"] .queue-item')).toBeFocused();
+  await expect(counter).toHaveText('01/ 03');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('[data-card-id="second"] .queue-item')).toBeFocused();
+  await expect(counter).toHaveText('03/ 03');
   await page.getByRole('button', { name: '서버 저장', exact: true }).click();
   await expect(page.getByRole('button', { name: '저장완료', exact: true })).toBeDisabled();
   expect(saved.items.map(i => i.slidePositions?.[id] ?? 0)).toEqual([1, 2, 0]);

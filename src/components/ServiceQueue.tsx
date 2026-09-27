@@ -22,6 +22,16 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, editing, o
   // dragstart. Keep the card the user actually grabbed, not the element now under
   // the pointer after that scroll.
   const pressed = useRef<string | null>(null);
+  const selectAdjacent = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (!['ArrowDown', 'ArrowUp'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault(); event.stopPropagation();
+    const next = value.items[index + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    onSelect(next.id);
+    const button = event.currentTarget.closest('nav')?.querySelector<HTMLButtonElement>(`[data-card-id="${next.id}"] .queue-item`);
+    button?.focus({ preventScroll: true });
+    button?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  };
   const drop = (event: React.DragEvent, sectionId: string, before?: string) => {
     if (locked || !drag.current) return;
     event.preventDefault(); event.stopPropagation();
@@ -51,7 +61,7 @@ export function ServiceQueue({ manifest, selected, disabled, canEdit, editing, o
             onDragStart={e => { if (locked) { e.preventDefault(); return; } const source = pressed.current ?? id; drag.current = source; setDragging(source); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('application/x-worship-card', source); const element = e.currentTarget.closest('nav')?.querySelector<HTMLElement>(`[data-card-id="${source}"]`); if (element) e.dataTransfer.setDragImage(element, 24, 24); setMenu(null); }}
             onDragEnd={() => { drag.current = null; pressed.current = null; setDragging(null); setOver(''); }}
             onDragOver={e => { if (drag.current && !locked) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; setOver(`before:${id}`); } }} onDrop={e => drop(e, section.id, id)}>
-            <div className="queue-card-row"><button className={`queue-item ${selected === id ? 'active' : ''}`} onClick={() => onSelect(id)}><span className="queue-number">{String(number).padStart(2, '0')}</span><span className="queue-copy"><strong>{item.title}</strong>{files.map(file => <small className="queue-file-name" key={file.id} title={file.name}>{file.name}</small>)}{item.audioSource === 'youtube' && <small className="queue-file-name">찬양 YouTube</small>}</span>{(item.audioSource === 'youtube' || item.audioId) && <Music2 size={13} />}</button>
+            <div className="queue-card-row"><button className={`queue-item ${selected === id ? 'active' : ''}`} aria-current={selected === id ? 'step' : undefined} aria-keyshortcuts="ArrowDown ArrowUp" onClick={() => onSelect(id)} onKeyDown={event => selectAdjacent(event, number - 1)}><span className="queue-number">{String(number).padStart(2, '0')}</span><span className="queue-copy"><strong>{item.title}</strong>{files.map(file => <small className="queue-file-name" key={file.id} title={file.name}>{file.name}</small>)}{item.audioSource === 'youtube' && <small className="queue-file-name">찬양 YouTube</small>}</span>{(item.audioSource === 'youtube' || item.audioId) && <Music2 size={13} />}</button>
               {canEdit && <button className="card-grip" disabled={locked} aria-label={`예배 순서 ${number} 이동 메뉴`} title="드래그로 이동 · 클릭하면 이동 메뉴" aria-expanded={menu === id} onClick={() => setMenu(menu === id ? null : id)}><GripVertical size={15} /></button>}
               {canEdit && editing && <button className="queue-rename" disabled={locked} aria-label={`${item.title} 순서 이름 수정`} title="순서 이름 수정" onClick={() => { setRenaming({ id, title: item.title }); setMenu(null); }}><Edit3 size={14} /></button>}
               {canEdit && editing && <button className="queue-delete" disabled={locked} aria-label={`${item.title} 카드 삭제`} onClick={() => { if (!locked && confirm(`‘${item.title}’ 예배 순서를 삭제할까요? PPT 섹션과 원본 파일은 유지됩니다.`)) { onChange(removeCard(value, id)); setMenu(null); setAnnouncement(`${item.title} 카드를 삭제했습니다.`); } }}><Trash2 size={14} /></button>}</div>
