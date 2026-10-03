@@ -2,7 +2,7 @@
 import { ChoiceButtons } from './ChoiceButtons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Church, CircleHelp, Cloud, Download, Edit3, Maximize2, Monitor, MonitorUp, Moon, Plus, Radio, RefreshCw, X } from 'lucide-react';
-import { AudioPlayer } from './AudioPlayer';
+import { AudioPlayer, type AudioPlayerControls } from './AudioPlayer';
 import { YouTubePlayer } from './YouTubePlayer';
 import { YouTubeLinkField } from './YouTubeLinkField';
 import { SlideView } from './SlideView';
@@ -26,6 +26,7 @@ export function Console() {
   const [mode, setMode] = useState('local'); const [authenticated, setAuthenticated] = useState(false);
   const [ready, setReady] = useState(false); const [queueEditing, setQueueEditing] = useState(false); const [usePdf, setUsePdf] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const audioControls = useRef<AudioPlayerControls>(null);
   const [serverFilesOpen, setServerFilesOpen] = useState(false);
   const canEdit = ready && authenticated;
   const [dirty, setDirty] = useState(false); const dirtyRef = useRef(false);
@@ -84,6 +85,7 @@ export function Console() {
   const asset = manifest.assets.find(a => a.id === assetId) ?? null;
   const presentationEdit = asset?.kind === 'pptx' && presentationOwner?.presentationEdit?.assetId === asset.id ? presentationOwner.presentationEdit : undefined;
   const audio = manifest.assets.find(a => a.id === active?.audioId) ?? null;
+  const hasMp3 = active?.audioSource !== 'youtube' && audio?.kind === 'mp3';
   const savedSlide = asset ? active?.slidePositions?.[asset.id] ?? 0 : 0;
 
   const change = useCallback((patch: Partial<Snapshot>) => {
@@ -190,11 +192,22 @@ export function Console() {
     const key = (e: KeyboardEvent) => {
       const element = e.target as HTMLElement;
       if (guideOpen || queueEditing || serverFilesOpen || slideEditorOpen || element.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)) return;
-      if (e.key === ' ' && element.tagName === 'BUTTON') return;
-      if (['ArrowLeft', 'ArrowRight', ' '].includes(e.key)) { e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : 1); }
+      if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === ' ') {
+        // Cards keep focus after selection. Space controls their MP3, while
+        // other buttons retain their native keyboard activation (including Play).
+        const button = element.closest('button');
+        if (element.closest('a') || (button && !(hasMp3 && button.classList.contains('queue-item')))) return;
+        e.preventDefault();
+        if (e.repeat) return;
+        if (hasMp3) audioControls.current?.toggle();
+        else navigate(1);
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); navigate(e.key === 'ArrowLeft' ? -1 : 1); }
       if (e.key.toLowerCase() === 'b') change({ blackout: !stateRef.current.blackout });
     }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
-  }, [guideOpen, queueEditing, serverFilesOpen, slideEditorOpen, navigate, change]);
+  }, [guideOpen, queueEditing, serverFilesOpen, slideEditorOpen, hasMp3, navigate, change]);
   useEffect(() => {
     if (!ready || mode !== 'cloud') return;
     let cancelled = false; let running = false;
@@ -344,8 +357,8 @@ export function Console() {
       </section>}
       {active?.audioSource === 'youtube'
         ? <YouTubePlayer key={active.id} track={active.youtube} title={active.title} suspended={queueEditing || serverFilesOpen || slideEditorOpen} />
-        : <AudioPlayer key={active?.id ?? 'empty'} asset={audio} title={active?.title ?? '찬양'} />}
-      <footer className="console-footer"><span><kbd>←</kbd><kbd>→</kbd> 슬라이드 이동 <kbd>Space</kbd> 다음 <kbd>B</kbd> 화면 가리기</span>{canEdit && <button className="text-button" disabled={!!busy || opened} onClick={async () => { if (!confirm('이 PC의 오프라인 자료와 편집 내용을 모두 삭제할까요? 서버 자료는 유지됩니다.')) return; try { await clearLocalFiles(); sessionStorage.removeItem('worship-state'); sessionStorage.removeItem('worship-selected'); location.reload(); } catch (e) { setMessage(errorText(e)); } }}>이 PC 저장 자료 지우기</button>}</footer>
+        : <AudioPlayer ref={audioControls} key={active?.id ?? 'empty'} asset={audio} title={active?.title ?? '찬양'} />}
+      <footer className="console-footer"><span><kbd>←</kbd><kbd>→</kbd> 슬라이드 이동 <kbd>Space</kbd> {hasMp3 ? '찬양 재생·일시정지' : '다음 슬라이드'} <kbd>B</kbd> 화면 가리기</span>{canEdit && <button className="text-button" disabled={!!busy || opened} onClick={async () => { if (!confirm('이 PC의 오프라인 자료와 편집 내용을 모두 삭제할까요? 서버 자료는 유지됩니다.')) return; try { await clearLocalFiles(); sessionStorage.removeItem('worship-state'); sessionStorage.removeItem('worship-selected'); location.reload(); } catch (e) { setMessage(errorText(e)); } }}>이 PC 저장 자료 지우기</button>}</footer>
     </main>
     {canEdit && slideEditorOpen && asset?.kind === 'pptx' && presentationOwner && <SlideEditor key={presentationOwner.id} scopeLabel={range && range.count > 1 ? `‘${presentationOwner.title}’ 섹션의 ${range.count}개 순서에 적용` : undefined} asset={asset} initialEdit={presentationEdit} initialIndex={state.slide} onClose={() => setSlideEditorOpen(false)} onApply={(edit, index) => {
       if (!canEdit) return;
